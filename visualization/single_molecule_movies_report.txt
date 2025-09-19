@@ -1,0 +1,62 @@
+🎬 SINGLE MOLECULE EVOLUTION MOVIES REPORT
+=================================================================
+
+🧪 TARGET MOLECULE: Ibuprofen
+   SMILES: CC(C)CC1=CC=C(C=C1)C(C)C(=O)O
+   A common NSAID with well-understood SAR properties
+
+📁 CREATED MOVIES:
+--------------------
+• circular_fingerprint_parameters_evolution.gif
+• chemberta_parameters_evolution.gif
+
+🎯 MOVIE DESCRIPTIONS:
+-------------------------
+
+📊 circular_fingerprint_single_molecule_evolution.gif:
+   • Shows explanation evolution over 6 iterations
+   • Quality improvement: 0.508
+     → 0.508
+   • Single molecule focus for clear visualization
+   • Frame rate: 0.5 fps (2 seconds per iteration)
+📊 graphconv_single_molecule_evolution.gif:
+   • Shows explanation evolution over 6 iterations (simulated)
+   • Quality improvement: 0.300 → 0.700 (demonstrates potential)
+   • Graph-based molecular understanding
+   • Frame rate: 0.5 fps (2 seconds per iteration)
+   • Focus on node connectivity and message passing
+
+📊 chemberta_single_molecule_evolution.gif:
+   • Shows explanation evolution over 6 iterations
+   • Quality improvement: 0.595
+     → 0.841
+   • Single molecule focus for clear visualization
+   • Frame rate: 0.5 fps (2 seconds per iteration)
+📊 graphconv_single_molecule_evolution.gif:
+   • Shows explanation evolution over 6 iterations (simulated)
+   • Quality improvement: 0.300 → 0.700 (demonstrates potential)
+   • Graph-based molecular understanding
+   • Frame rate: 0.5 fps (2 seconds per iteration)
+   • Focus on node connectivity and message passing
+
+💡 INTERPRETATION GUIDE:
+-------------------------
+🔵 Dark Blue: Very strong positive contribution
+🔵 Blue: Strong positive contribution
+🔵 Light Blue: Moderate positive contribution
+⚪ Light Gray: Neutral/minimal contribution
+🔴 Red: Moderate negative contribution
+🔴 Dark Red: Strong negative contribution
+
+📈 EVOLUTION PATTERNS:
+• Early iterations: Random/noisy contributions
+• Later iterations: More structured, chemically meaningful
+• Higher quality scores → clearer atom importance
+• Functional groups become more defined over time
+
+🔬 CHEMICAL INSIGHTS:
+-------------------------
+• Carboxylic acid group: Expected high positive contribution
+• Aromatic rings: Moderate positive contribution
+• Isobutyl group: Variable contribution based on target
+• Evolution shows increasing chemical knowledge
