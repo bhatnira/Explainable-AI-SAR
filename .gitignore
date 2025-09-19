@@ -1,0 +1,57 @@
+# Virtual environments
+chemberta_env/
+venv/
+env/
+.venv/
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Model files (too large for git)
+*.pkl
+*.joblib
+*.model
+*.h5
+*.hdf5
+
+# Model output directories
+chemberta_output/
+*_output/
+
+# Log files
+*.log
+logs/
+
+# Data files (if large)
+# Uncomment if your data files are too large
+# *.csv
+# *.xlsx
+# *.json
+
+# Compiled extensions
+*.so
+*.dylib
+*.dll
