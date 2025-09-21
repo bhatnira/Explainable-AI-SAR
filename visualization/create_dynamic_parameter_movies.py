@@ -75,20 +75,17 @@ except Exception:
 
 @contextlib.contextmanager
 def suppress_stderr():
-    try:
-        with open(os.devnull, 'w') as devnull, contextlib.redirect_stderr(devnull):
+    """Silence stderr within the context without swallowing exceptions improperly."""
+    with open(os.devnull, 'w') as devnull:
+        with contextlib.redirect_stderr(devnull):
             yield
-    except Exception:
-        # Fallback: no suppression
-        yield
 
 @contextlib.contextmanager
 def suppress_output():
-    try:
-        with open(os.devnull, 'w') as devnull, contextlib.redirect_stderr(devnull), contextlib.redirect_stdout(devnull):
+    """Silence stdout and stderr within the context without swallowing exceptions improperly."""
+    with open(os.devnull, 'w') as devnull:
+        with contextlib.redirect_stderr(devnull), contextlib.redirect_stdout(devnull):
             yield
-    except Exception:
-        yield
 
 @contextlib.contextmanager
 def silence_fds(fds=(1, 2)):
@@ -389,7 +386,7 @@ class DynamicParameterMovieCreator:
         return img, auc_val, ap_val
 
     def draw_molecule_with_dynamic_parameters(self, atom_weights, title, iteration, quality_score, performance_score, model_type, params, mol,
-                                              auc_val=None, auprc_val=None, acc_img=None, cm_img=None, rocpr_img=None):
+                                              auc_val=None, auprc_val=None, acc_img=None, cm_img=None, rocpr_img=None, advanced_metrics=None):
         if mol is None:
             return None
         
@@ -481,11 +478,11 @@ class DynamicParameterMovieCreator:
         
         # Metrics (include AUC/AUPRC) — make Iteration bold as a key label
         draw.text((int(350 * s), int(460 * s)), f"Iteration: {iteration}", fill='black', font=metric_font_bold)
-        draw.text((int(20 * s), int(480 * s)), f"Quality: {quality_score:.3f}", fill='blue', font=small_font)
-        draw.text((int(170 * s), int(480 * s)), f"Accuracy: {performance_score:.3f}", fill='green', font=small_font)
+        # Remove inline Quality/Q row; keep only accuracy and ROC/AUPRC here
         draw.text((int(330 * s), int(480 * s)), f"ROC AUC: {auc_val:.3f}" if auc_val is not None else "ROC AUC: NA", fill='darkred', font=small_font)
         draw.text((int(500 * s), int(480 * s)), f"AUPRC: {auprc_val:.3f}" if auprc_val is not None else "AUPRC: NA", fill='darkgreen', font=small_font)
-        draw.text((int(330 * s), int(500 * s)), f"Combined: {0.6*performance_score + 0.4*quality_score:.3f}", 
+        draw.text((int(170 * s), int(500 * s)), f"Accuracy: {performance_score:.3f}", fill='green', font=small_font)
+        draw.text((int(330 * s), int(500 * s)), f"Combined: {0.6*performance_score + 0.4*(advanced_metrics.get('Q', quality_score) if advanced_metrics else quality_score):.3f}", 
                  fill='purple', font=small_font)
         
         # Current parameters box
@@ -498,8 +495,7 @@ class DynamicParameterMovieCreator:
         
         # Parameter evolution tracking (right side) — closer to molecule
         param_box_x = int(680 * s)
-        # Removed enclosing rectangle box per request
-        # draw.rectangle([param_box_x-5, int(80 * s), param_box_x+int(290 * s), int(450 * s)], outline='black', width=1)
+        # no enclosing rectangle (removed)
         draw.text((param_box_x, int(85 * s)), "📊 Parameter Evolution (Current):", fill='black', font=small_font_bold)
         
         history_y = int(112 * s)
@@ -509,8 +505,38 @@ class DynamicParameterMovieCreator:
         for pname, pval in (params or {}).items():
             draw.text((param_box_x + int(10 * s), history_y), f"• {pname}: {pval}", fill='darkgreen', font=param_font)
             history_y += int(14 * s)
-        draw.text((param_box_x + int(10 * s), history_y), f"→ Quality: {quality_score:.3f}", fill='blue', font=param_font)
-        history_y += int(22 * s)
+        # remove simple Quality line here
+        # draw.text((param_box_x + int(10 * s), history_y), f"→ Quality: {quality_score:.3f}", fill='blue', font=param_font)
+        # history_y += int(22 * s)
+        
+        # Advanced Explanation Quality block (full words), placed below parameter evolution
+        history_y += int(12 * s)
+        draw.text((param_box_x, history_y), "🧪 Advanced Explanation Quality:", fill='black', font=small_font_bold)
+        history_y += int(18 * s)
+        if advanced_metrics:
+            Qv = advanced_metrics.get('Q', None)
+            Sv = advanced_metrics.get('S', None)
+            Mv = advanced_metrics.get('M', None)
+            Cv = advanced_metrics.get('C', None)
+            Fv = advanced_metrics.get('F', None)
+            if Qv is not None:
+                draw.text((param_box_x + int(10 * s), history_y), f"• Composite Quality: {Qv:.3f}", fill='blue', font=param_font)
+                history_y += int(14 * s)
+            if Sv is not None:
+                draw.text((param_box_x + int(10 * s), history_y), f"• Sparsity: {Sv:.2f}", fill='black', font=param_font)
+                history_y += int(14 * s)
+            if Mv is not None:
+                draw.text((param_box_x + int(10 * s), history_y), f"• Normalized Magnitude: {Mv:.2f}", fill='black', font=param_font)
+                history_y += int(14 * s)
+            if Cv is not None:
+                draw.text((param_box_x + int(10 * s), history_y), f"• Fragment Coherence: {Cv:.2f}", fill='black', font=param_font)
+                history_y += int(14 * s)
+            if Fv is not None:
+                draw.text((param_box_x + int(10 * s), history_y), f"• Directional Faithfulness: {Fv:.2f}", fill='black', font=param_font)
+                history_y += int(14 * s)
+        else:
+            draw.text((param_box_x + int(10 * s), history_y), "• (metrics unavailable)", fill='gray', font=param_font)
+            history_y += int(14 * s)
         
         # Legend — closer and bold header
         legend_x = int(680 * s)
@@ -706,13 +732,22 @@ class DynamicParameterMovieCreator:
             performance_score = float(acc)
             self.quality_evolution['circular_fingerprint'].append(quality_score)
             # performance_evolution already updated above
+
+            # Advanced quality metrics (S, M, C, F)
+            def _circ_proba_fn(smiles_s: str):
+                try:
+                    Xs = self.featurize([smiles_s], radius, nBits, useFeatures, useChirality)
+                    return float(pipeline.predict_proba(Xs)[0, 1])
+                except Exception:
+                    return 0.0
+            advanced_metrics = self._compute_advanced_quality(atom_weights, mol, proba_fn=_circ_proba_fn)
             
             # Draw frame
             title = f"Dynamic Parameter Optimization - Circular Fingerprint"
             canvas = self.draw_molecule_with_dynamic_parameters(
                 atom_weights, title, iteration, quality_score, performance_score, model_name, params, mol,
                 auc_val=self.last_auc[model_name], auprc_val=self.last_auprc[model_name],
-                acc_img=acc_img, cm_img=cm_img, rocpr_img=rocpr_img
+                acc_img=acc_img, cm_img=cm_img, rocpr_img=rocpr_img, advanced_metrics=advanced_metrics
             )
             if canvas is not None:
                 frame_path = frame_dir / f"{model_name}_dynamic_frame_{iteration:02d}.png"
@@ -906,6 +941,7 @@ class DynamicParameterMovieCreator:
                 except Exception:
                     proba_whole = float(np.clip(np.mean(arr), 0.0, 1.0)) if 'arr' in locals() else 0.5
                 try:
+                    n_atoms = int(mol.GetNumAtoms()) if mol is not None else 0
                     arr_frag = np.array(pred_frag)
                     if arr_frag.ndim == 3 and arr_frag.shape[-1] >= 2:
                         proba_frag = arr_frag[:, 0, 1]
@@ -914,12 +950,6 @@ class DynamicParameterMovieCreator:
                     else:
                         proba_frag = 1 / (1 + np.exp(-arr_frag.squeeze()))
                     proba_frag = np.array(proba_frag).reshape(-1)
-                except Exception:
-                    proba_frag = None
-                atom_weights = {}
-                if proba_frag is not None and mol is not None:
-                    n_atoms = mol.GetNumAtoms()
-                    # Heuristic: assume order aligns to atom indices 0..N-1 after flattening
                     vals = proba_frag[:n_atoms] - proba_whole
                     # Normalize to [-1, 1]
                     max_abs = float(np.max(np.abs(vals))) if np.size(vals) > 0 else 0.0
@@ -928,7 +958,7 @@ class DynamicParameterMovieCreator:
                     else:
                         vals = np.zeros_like(vals, dtype=float)
                     atom_weights = {int(i): float(vals[i]) for i in range(min(n_atoms, len(vals)))}
-                else:
+                except Exception:
                     atom_weights = {}
             except Exception as e:
                 print(f"   ⚠️ Contribution generation failed: {e}")
@@ -950,14 +980,31 @@ class DynamicParameterMovieCreator:
                 quality_score = 0.0
             performance_score = float(acc)
             self.quality_evolution['graphconv'].append(quality_score)
-            # Removed duplicate performance_evolution append here
             
+            # Advanced quality metrics (S, M, C, F)
+            def _gc_proba_fn(smiles_s: str):
+                try:
+                    feats = featurizer.featurize([smiles_s])
+                    ds = dc.data.NumpyDataset(feats, np.array([0]), ids=np.array([smiles_s]))
+                    with silence_fds(), suppress_stderr():
+                        raw = model.predict(ds)
+                    arr1 = np.array(raw)
+                    if arr1.ndim == 3 and arr1.shape[-1] >= 2:
+                        return float(arr1[0, 0, 1])
+                    if arr1.ndim == 2 and arr1.shape[-1] >= 2:
+                        return float(arr1[0, 1])
+                    val = float(1 / (1 + np.exp(-arr1.squeeze()[0])))
+                    return val
+                except Exception:
+                    return 0.0
+            advanced_metrics = self._compute_advanced_quality(atom_weights, mol, proba_fn=_gc_proba_fn)
+
             # Draw frame
             title = "Dynamic Parameter Optimization - GraphConv"
             canvas = self.draw_molecule_with_dynamic_parameters(
                 atom_weights, title, iteration, quality_score, performance_score, 'graphconv', params, mol,
                 auc_val=self.last_auc['graphconv'], auprc_val=self.last_auprc['graphconv'],
-                acc_img=acc_img, cm_img=cm_img, rocpr_img=rocpr_img
+                acc_img=acc_img, cm_img=cm_img, rocpr_img=rocpr_img, advanced_metrics=advanced_metrics
             )
             if canvas is not None:
                 frame_path = frame_dir / f"{model_name}_dynamic_frame_{iteration:02d}.png"
@@ -1153,13 +1200,33 @@ class DynamicParameterMovieCreator:
                 quality_score = 0.0
             
             self.quality_evolution['chemberta'].append(quality_score)
+
+            # Advanced quality metrics (S, M, C, F)
+            def _cb_proba_fn(smiles_s: str):
+                try:
+                    import torch
+                    model.eval()
+                    enc = tokenizer(
+                        smiles_s,
+                        truncation=True,
+                        padding='max_length',
+                        max_length=max_len,
+                        return_tensors='pt'
+                    )
+                    with torch.no_grad():
+                        out = model(**{k: v for k, v in enc.items()})
+                        p = torch.softmax(out.logits, dim=-1)[0, 1].item()
+                    return float(p)
+                except Exception:
+                    return 0.0
+            advanced_metrics = self._compute_advanced_quality(atom_weights, mol, proba_fn=_cb_proba_fn)
             
             # Draw frame
             title = 'Dynamic Parameter Optimization - ChemBERTa'
             canvas = self.draw_molecule_with_dynamic_parameters(
                 atom_weights, title, iteration, quality_score, performance_score, 'chemberta', params, mol,
                 auc_val=self.last_auc['chemberta'], auprc_val=self.last_auprc['chemberta'],
-                acc_img=acc_img, cm_img=cm_img, rocpr_img=rocpr_img
+                acc_img=acc_img, cm_img=cm_img, rocpr_img=rocpr_img, advanced_metrics=advanced_metrics
             )
             if canvas is not None:
                 frame_path = frame_dir / f"{model_name}_dynamic_frame_{iteration:02d}.png"
@@ -1314,3 +1381,112 @@ class DynamicParameterMovieCreator:
             for k in list(atom_weights.keys()):
                 atom_weights[k] = float(atom_weights[k] / vmax)
         return atom_weights
+
+    def _remove_atoms(self, mol, atom_indices):
+        """Return a sanitized copy of mol with given atom indices removed. If removal fails, return None."""
+        try:
+            idxs = sorted(set(int(i) for i in atom_indices if i is not None), reverse=True)
+            rwm = Chem.RWMol(mol)
+            for i in idxs:
+                if 0 <= i < rwm.GetNumAtoms():
+                    try:
+                        rwm.RemoveAtom(i)
+                    except Exception:
+                        return None
+            new = rwm.GetMol()
+            Chem.SanitizeMol(new)
+            return new if new.GetNumAtoms() > 0 else None
+        except Exception:
+            return None
+
+    def _compute_sparsity_magnitude_coherence(self, atom_weights, mol):
+        """Compute S (sparsity), M (normalized magnitude), C (fragment coherence). Return dict."""
+        N = int(mol.GetNumAtoms()) if mol is not None else 0
+        w = atom_weights or {}
+        K = int(len(w)) if w else 0
+        S = float(1.0 - (K / N)) if N > 0 else 0.0
+        # normalized magnitude among highlighted atoms
+        if K > 0:
+            abs_vals = [abs(float(v)) for v in w.values()]
+            mx = max(abs_vals) if abs_vals else 1.0
+            mx = mx if mx > 0 else 1.0
+            M = float(sum(v / mx for v in abs_vals) / K)
+        else:
+            M = 0.0
+        # coherence via connected components on highlighted subgraph
+        if mol is not None and K > 0:
+            hset = set(int(i) for i in w.keys())
+            visited = set()
+            def neighbors(a):
+                for b in range(mol.GetNumAtoms()):
+                    if b in hset and a != b and mol.GetBondBetweenAtoms(a, b):
+                        yield b
+            # compute component sizes
+            max_comp = 0
+            for a in list(hset):
+                if a in visited:
+                    continue
+                stack = [a]
+                sz = 0
+                visited.add(a)
+                while stack:
+                    u = stack.pop()
+                    sz += 1
+                    for v in neighbors(u):
+                        if v not in visited:
+                            visited.add(v)
+                            stack.append(v)
+                max_comp = max(max_comp, sz)
+            C = float(max_comp / K) if K > 0 else 0.0
+        else:
+            C = 0.0
+        return {"S": S, "M": M, "C": C}
+
+    def _directional_faithfulness(self, atom_weights, mol, proba_fn):
+        """Compute faithfulness F by removing positive/negative atoms and measuring Δ.
+        proba_fn(smiles)->prob for class 1. Return float in [0,1] or 0 on failure.
+        """
+        try:
+            if mol is None or not atom_weights or proba_fn is None:
+                return 0.0
+            P0 = float(proba_fn(Chem.MolToSmiles(mol)))
+            if not (0.0 <= P0 <= 1.0):
+                return 0.0
+            H_plus = [i for i, v in atom_weights.items() if float(v) > 0]
+            H_minus = [i for i, v in atom_weights.items() if float(v) < 0]
+            F_pos = 0.0
+            F_neg = 0.0
+            EPS = 1e-8
+            if H_plus:
+                mol_minus = self._remove_atoms(mol, H_plus)
+                if mol_minus is not None and mol_minus.GetNumAtoms() > 0:
+                    Pm = float(proba_fn(Chem.MolToSmiles(mol_minus)))
+                    F_pos = max(0.0, (P0 - Pm) / max(P0, EPS))
+            if H_minus:
+                mol_plus = self._remove_atoms(mol, H_minus)
+                if mol_plus is not None and mol_plus.GetNumAtoms() > 0:
+                    Pp = float(proba_fn(Chem.MolToSmiles(mol_plus)))
+                    F_neg = max(0.0, (Pp - P0) / max(1.0 - P0, EPS))
+            return float(0.5 * (F_pos + F_neg))
+        except Exception:
+            return 0.0
+
+    def _compute_advanced_quality(self, atom_weights, mol, proba_fn=None, weights=None):
+        """Return dict with keys: Q, S, M, C, F (optional). Q is weighted avg of available.
+        weights default equal across available sub-metrics.
+        """
+        subs = self._compute_sparsity_magnitude_coherence(atom_weights, mol)
+        F = self._directional_faithfulness(atom_weights, mol, proba_fn) if proba_fn else 0.0
+        available = {"S": subs["S"], "M": subs["M"], "C": subs["C"], "F": F}
+        # determine weights only for available metrics
+        active_keys = [k for k, v in available.items() if v is not None]
+        if not active_keys:
+            return {"Q": 0.0, **available}
+        if not weights:
+            w = {k: 1.0 / len(active_keys) for k in active_keys}
+        else:
+            # normalize provided weights over active keys
+            total = sum(weights.get(k, 0.0) for k in active_keys)
+            w = {k: (weights.get(k, 0.0) / total) if total > 0 else (1.0 / len(active_keys)) for k in active_keys}
+        Q = float(sum(w[k] * available[k] for k in active_keys))
+        return {"Q": Q, **available}
