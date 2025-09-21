@@ -505,34 +505,6 @@ class DynamicParameterMovieCreator:
             draw.text((param_box_x + int(10 * s), history_y), f"→ Quality: {q_val:.3f}", fill='blue', font=param_font)
             history_y += int(20 * s)
         
-        # Strategy (model-specific)
-        strategy_y = int(350 * s)
-        draw.text((param_box_x, strategy_y), "🎯 Agentic Strategy:", fill='black', font=small_font)
-        if model_type == 'circular_fingerprint':
-            strategy_info = [
-                "• Exploring radius 1-4 for coverage",
-                "• Testing nBits 1024-4096 for detail",
-                "• TPOT or sklearn baseline optimizes downstream model"
-            ]
-        elif model_type == 'graphconv':
-            strategy_info = [
-                "• Varying hidden_dim for capacity",
-                "• Adjusting num_layers for depth",
-                "• Tuning dropout & lr for stability"
-            ]
-        elif model_type == 'chemberta':
-            strategy_info = [
-                "• Tune lr/epochs/seq length",
-                "• Vary attention layer/head for interpretability",
-                "• Use [CLS] attention → atom weights"
-            ]
-        else:
-            strategy_info = ["• Iterative parameter search", "• Balance perf & explainability"]
-        strat_y = strategy_y + int(15 * s)
-        for info in strategy_info:
-            draw.text((param_box_x, strat_y), info, fill='purple', font=param_font)
-            strat_y += int(12 * s)
-        
         # Legend
         legend_x = int(900 * s)
         legend_y = int(460 * s)
