@@ -495,10 +495,12 @@ class DynamicParameterMovieCreator:
         
         # Metrics (include AUC/AUPRC) — make Iteration bold as a key label
         draw.text((int(350 * s), int(460 * s)), f"Iteration: {iteration}", fill='black', font=metric_font_bold)
-        # Remove inline Quality/Q row; keep only accuracy and ROC/AUPRC here
+        # Remove inline Quality/Q row; keep only ROC AUC here (AUPRC and Accuracy are shown in plots)
         draw.text((int(330 * s), int(480 * s)), f"ROC AUC: {auc_val:.3f}" if auc_val is not None else "ROC AUC: NA", fill='darkred', font=small_font)
-        draw.text((int(500 * s), int(480 * s)), f"AUPRC: {auprc_val:.3f}" if auprc_val is not None else "AUPRC: NA", fill='darkgreen', font=small_font)
-        draw.text((int(170 * s), int(500 * s)), f"Accuracy: {performance_score:.3f}", fill='green', font=small_font)
+        # Removed AUPRC text (redundant with PR plot)
+        # draw.text((int(500 * s), int(480 * s)), f"AUPRC: {auprc_val:.3f}" if auprc_val is not None else "AUPRC: NA", fill='darkgreen', font=small_font)
+        # Removed Accuracy text (redundant with Accuracy Evolution panel)
+        # draw.text((int(170 * s), int(500 * s)), f"Accuracy: {performance_score:.3f}", fill='green', font=small_font)
         draw.text((int(330 * s), int(500 * s)), f"Combined: {0.6*performance_score + 0.4*(advanced_metrics.get('Q', quality_score) if advanced_metrics else quality_score):.3f}", 
                  fill='purple', font=small_font)
         
@@ -1486,6 +1488,8 @@ class DynamicParameterMovieCreator:
             # not an atom (bonds, ring digits, branches, etc.)
             i += 1
         return spans
+
+
 
     def _chemberta_cls_attention_to_atom_weights(self, model, tokenizer, smiles: str, max_len: int, att_layer: int, att_head: int):
         """Map ChemBERTa [CLS]->token attention to RDKit atom weights using token offset mappings into SMILES.
