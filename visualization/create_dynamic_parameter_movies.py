@@ -498,23 +498,19 @@ class DynamicParameterMovieCreator:
         
         # Parameter evolution tracking (right side) — closer to molecule
         param_box_x = int(680 * s)
-        draw.rectangle([param_box_x-5, int(80 * s), param_box_x+int(290 * s), int(450 * s)], outline='black', width=1)
-        draw.text((param_box_x, int(85 * s)), "📊 Parameter Evolution History:", fill='black', font=small_font_bold)
+        # Removed enclosing rectangle box per request
+        # draw.rectangle([param_box_x-5, int(80 * s), param_box_x+int(290 * s), int(450 * s)], outline='black', width=1)
+        draw.text((param_box_x, int(85 * s)), "📊 Parameter Evolution (Current):", fill='black', font=small_font_bold)
         
         history_y = int(112 * s)
-        hist_len = min(len(self.performance_evolution.get(model_type, [])), 4)
-        start_idx = max(0, len(self.performance_evolution.get(model_type, [])) - hist_len)
-        for idx in range(start_idx, start_idx + hist_len):
-            draw.text((param_box_x, history_y), f"Iteration {idx}:", fill='black', font=param_font_bold)
-            history_y += int(16 * s)
-            params = self.get_parameters_for_iteration(model_type, idx)
-            for pname, pval in params.items():
-                draw.text((param_box_x + int(10 * s), history_y), f"• {pname}: {pval}", fill='darkgreen', font=param_font)
-                history_y += int(14 * s)
-            q_list = self.quality_evolution.get(model_type, [])
-            q_val = q_list[idx] if idx < len(q_list) else 0.0
-            draw.text((param_box_x + int(10 * s), history_y), f"→ Quality: {q_val:.3f}", fill='blue', font=param_font)
-            history_y += int(22 * s)
+        # Show only current iteration parameters (no full history)
+        draw.text((param_box_x, history_y), f"Iteration {iteration}:", fill='black', font=param_font_bold)
+        history_y += int(16 * s)
+        for pname, pval in (params or {}).items():
+            draw.text((param_box_x + int(10 * s), history_y), f"• {pname}: {pval}", fill='darkgreen', font=param_font)
+            history_y += int(14 * s)
+        draw.text((param_box_x + int(10 * s), history_y), f"→ Quality: {quality_score:.3f}", fill='blue', font=param_font)
+        history_y += int(22 * s)
         
         # Legend — closer and bold header
         legend_x = int(680 * s)
@@ -730,6 +726,7 @@ class DynamicParameterMovieCreator:
         # Create animation (match canvas size: 1200*s x 800*s at 200 dpi => figsize=6*s x 4*s)
         fig, ax = plt.subplots(figsize=(6 * self.scale, 4 * self.scale), dpi=200)
         ax.axis('off')
+        fig.subplots_adjust(top=0.90, bottom=0.10)
         
         def animate(frame_idx):
             ax.clear()
@@ -738,9 +735,12 @@ class DynamicParameterMovieCreator:
                 img = plt.imread(frames[frame_idx])
                 ax.imshow(img)
                 progress = (frame_idx + 1) / len(frames)
-                ax.text(0.02, 0.02, f"Agentic Progress: {progress:.0%} ({frame_idx+1}/{len(frames)})", 
-                        transform=ax.transAxes, fontsize=24, fontweight='bold',
-                        bbox=dict(boxstyle="round,pad=0.35", facecolor="yellow", alpha=0.9))
+                # Remove previous figure-level texts to avoid stacking across frames
+                for t in list(fig.texts):
+                    t.remove()
+                fig.text(0.985, 0.02, f"Agentic Progress: {progress:.0%} ({frame_idx+1}/{len(frames)})",
+                         ha='right', va='bottom', fontsize=12, fontweight='bold',
+                         bbox=dict(boxstyle="round,pad=0.25", facecolor="white", edgecolor="black", alpha=0.95))
             return [ax]
         
         ani = animation.FuncAnimation(fig, animate, frames=len(frames), interval=4000, blit=False, repeat=True)
@@ -894,6 +894,42 @@ class DynamicParameterMovieCreator:
                     dataset_frag = tr.transform(dataset_frag)
                     pred_whole = model.predict(dataset_whole)
                     pred_frag = model.predict(dataset_frag)
+                # Map fragment predictions to per-atom weights
+                try:
+                    arr_whole = np.array(pred_whole)
+                    if arr_whole.ndim == 3 and arr_whole.shape[-1] >= 2:
+                        proba_whole = float(arr_whole[0, 0, 1])
+                    elif arr_whole.ndim == 2 and arr_whole.shape[-1] >= 2:
+                        proba_whole = float(arr_whole[0, 1])
+                    else:
+                        proba_whole = float(1 / (1 + np.exp(-arr_whole.squeeze()[0])))
+                except Exception:
+                    proba_whole = float(np.clip(np.mean(arr), 0.0, 1.0)) if 'arr' in locals() else 0.5
+                try:
+                    arr_frag = np.array(pred_frag)
+                    if arr_frag.ndim == 3 and arr_frag.shape[-1] >= 2:
+                        proba_frag = arr_frag[:, 0, 1]
+                    elif arr_frag.ndim == 2 and arr_frag.shape[-1] >= 2:
+                        proba_frag = arr_frag[:, 1]
+                    else:
+                        proba_frag = 1 / (1 + np.exp(-arr_frag.squeeze()))
+                    proba_frag = np.array(proba_frag).reshape(-1)
+                except Exception:
+                    proba_frag = None
+                atom_weights = {}
+                if proba_frag is not None and mol is not None:
+                    n_atoms = mol.GetNumAtoms()
+                    # Heuristic: assume order aligns to atom indices 0..N-1 after flattening
+                    vals = proba_frag[:n_atoms] - proba_whole
+                    # Normalize to [-1, 1]
+                    max_abs = float(np.max(np.abs(vals))) if np.size(vals) > 0 else 0.0
+                    if max_abs > 0:
+                        vals = (vals / max_abs).astype(float)
+                    else:
+                        vals = np.zeros_like(vals, dtype=float)
+                    atom_weights = {int(i): float(vals[i]) for i in range(min(n_atoms, len(vals)))}
+                else:
+                    atom_weights = {}
             except Exception as e:
                 print(f"   ⚠️ Contribution generation failed: {e}")
                 atom_weights = {}
@@ -935,6 +971,7 @@ class DynamicParameterMovieCreator:
         # Create animation (match canvas size and dpi)
         fig, ax = plt.subplots(figsize=(6 * self.scale, 4 * self.scale), dpi=200)
         ax.axis('off')
+        fig.subplots_adjust(top=0.90, bottom=0.10)
         def animate(frame_idx):
             ax.clear()
             ax.axis('off')
@@ -942,9 +979,12 @@ class DynamicParameterMovieCreator:
                 img = plt.imread(frames[frame_idx])
                 ax.imshow(img)
                 progress = (frame_idx + 1) / len(frames)
-                ax.text(0.02, 0.02, f"Agentic Progress: {progress:.0%} ({frame_idx+1}/{len(frames)})", 
-                        transform=ax.transAxes, fontsize=24, fontweight='bold',
-                        bbox=dict(boxstyle="round,pad=0.35", facecolor="yellow", alpha=0.9))
+                # Remove previous figure-level texts to avoid stacking across frames
+                for t in list(fig.texts):
+                    t.remove()
+                fig.text(0.985, 0.02, f"Agentic Progress: {progress:.0%} ({frame_idx+1}/{len(frames)})",
+                         ha='right', va='bottom', fontsize=12, fontweight='bold',
+                         bbox=dict(boxstyle="round,pad=0.25", facecolor="white", edgecolor="black", alpha=0.95))
             return [ax]
         ani = animation.FuncAnimation(fig, animate, frames=len(frames), interval=4000, blit=False, repeat=True)
         movie_path = (Path(__file__).resolve().parent / f"{model_name}_dynamic_parameters.gif")
@@ -1133,6 +1173,7 @@ class DynamicParameterMovieCreator:
         # Create animation (match canvas size and dpi)
         fig, ax = plt.subplots(figsize=(6 * self.scale, 4 * self.scale), dpi=200)
         ax.axis('off')
+        fig.subplots_adjust(top=0.90, bottom=0.10)
         def animate(frame_idx):
             ax.clear()
             ax.axis('off')
@@ -1140,9 +1181,12 @@ class DynamicParameterMovieCreator:
                 img = plt.imread(frames[frame_idx])
                 ax.imshow(img)
                 progress = (frame_idx + 1) / len(frames)
-                ax.text(0.02, 0.02, f"Agentic Progress: {progress:.0%} ({frame_idx+1}/{len(frames)})", 
-                        transform=ax.transAxes, fontsize=24, fontweight='bold',
-                        bbox=dict(boxstyle="round,pad=0.35", facecolor="yellow", alpha=0.9))
+                # Remove previous figure-level texts to avoid stacking across frames
+                for t in list(fig.texts):
+                    t.remove()
+                fig.text(0.985, 0.02, f"Agentic Progress: {progress:.0%} ({frame_idx+1}/{len(frames)})",
+                         ha='right', va='bottom', fontsize=12, fontweight='bold',
+                         bbox=dict(boxstyle="round,pad=0.25", facecolor="white", edgecolor="black", alpha=0.95))
             return [ax]
         ani = animation.FuncAnimation(fig, animate, frames=len(frames), interval=4000, blit=False, repeat=True)
         movie_path = (Path(__file__).resolve().parent / f"{model_name}_dynamic_parameters.gif")
