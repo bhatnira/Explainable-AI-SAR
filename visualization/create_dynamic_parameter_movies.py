@@ -438,7 +438,7 @@ class DynamicParameterMovieCreator:
                 else:
                     atom_colors[i] = (0.85, 0.85, 0.85)
         
-        drawer.SetFontSize(int(14 * s))
+        drawer.SetFontSize(int(16 * s))
         if atom_radii:
             drawer.DrawMolecule(mol, highlightAtoms=list(range(num_atoms)), highlightAtomColors=atom_colors, highlightAtomRadii=atom_radii)
         else:
@@ -452,63 +452,74 @@ class DynamicParameterMovieCreator:
         
         draw = ImageDraw.Draw(canvas)
         try:
-            title_font = ImageFont.truetype("Arial.ttf", int(18 * s))
-            metric_font = ImageFont.truetype("Arial.ttf", int(14 * s))
-            small_font = ImageFont.truetype("Arial.ttf", int(12 * s))
-            param_font = ImageFont.truetype("Arial.ttf", int(10 * s))
+            from pathlib import Path as _Path
+            import matplotlib as _mpl
+            _font_dir = _Path(_mpl.get_data_path()) / "fonts" / "ttf"
+            _regular_path = str(_font_dir / "DejaVuSans.ttf")
+            _bold_path = str(_font_dir / "DejaVuSans-Bold.ttf")
+            title_font = ImageFont.truetype(_bold_path, int(26 * s))
+            metric_font = ImageFont.truetype(_regular_path, int(16 * s))
+            metric_font_bold = ImageFont.truetype(_bold_path, int(18 * s))
+            small_font = ImageFont.truetype(_regular_path, int(15 * s))
+            small_font_bold = ImageFont.truetype(_bold_path, int(16 * s))
+            param_font = ImageFont.truetype(_regular_path, int(14 * s))
+            param_font_bold = ImageFont.truetype(_bold_path, int(14 * s))
         except Exception:
             title_font = ImageFont.load_default()
             metric_font = ImageFont.load_default()
+            metric_font_bold = ImageFont.load_default()
             small_font = ImageFont.load_default()
+            small_font_bold = ImageFont.load_default()
             param_font = ImageFont.load_default()
+            param_font_bold = ImageFont.load_default()
         
         # Title and model info
         draw.text((int(20 * s), int(15 * s)), title, fill='black', font=title_font)
-        # Use neutral text color for model label across all models for consistent look
+        # Bold model label
         draw.text((int(20 * s), int(460 * s)), f"Model: {model_type.replace('_', ' ').title()}", 
-                 fill='black', font=metric_font)
+                 fill='black', font=metric_font_bold)
         
-        # Metrics (include AUC/AUPRC)
-        draw.text((int(350 * s), int(460 * s)), f"Iteration: {iteration}", fill='black', font=metric_font)
+        # Metrics (include AUC/AUPRC) — make Iteration bold as a key label
+        draw.text((int(350 * s), int(460 * s)), f"Iteration: {iteration}", fill='black', font=metric_font_bold)
         draw.text((int(20 * s), int(480 * s)), f"Quality: {quality_score:.3f}", fill='blue', font=small_font)
-        draw.text((int(150 * s), int(480 * s)), f"Accuracy: {performance_score:.3f}", fill='green', font=small_font)
-        draw.text((int(280 * s), int(480 * s)), f"ROC AUC: {auc_val:.3f}" if auc_val is not None else "ROC AUC: NA", fill='darkred', font=small_font)
-        draw.text((int(420 * s), int(480 * s)), f"AUPRC: {auprc_val:.3f}" if auprc_val is not None else "AUPRC: NA", fill='darkgreen', font=small_font)
-        draw.text((int(300 * s), int(500 * s)), f"Combined: {0.6*performance_score + 0.4*quality_score:.3f}", 
+        draw.text((int(170 * s), int(480 * s)), f"Accuracy: {performance_score:.3f}", fill='green', font=small_font)
+        draw.text((int(330 * s), int(480 * s)), f"ROC AUC: {auc_val:.3f}" if auc_val is not None else "ROC AUC: NA", fill='darkred', font=small_font)
+        draw.text((int(500 * s), int(480 * s)), f"AUPRC: {auprc_val:.3f}" if auprc_val is not None else "AUPRC: NA", fill='darkgreen', font=small_font)
+        draw.text((int(330 * s), int(500 * s)), f"Combined: {0.6*performance_score + 0.4*quality_score:.3f}", 
                  fill='purple', font=small_font)
         
         # Current parameters box
         param_y_start = int(500 * s)
-        draw.text((int(20 * s), param_y_start), "🔧 Current Parameters:", fill='black', font=small_font)
-        y_offset = param_y_start + int(20 * s)
+        draw.text((int(20 * s), param_y_start), "🔧 Current Parameters:", fill='black', font=small_font_bold)
+        y_offset = param_y_start + int(24 * s)
         for name, val in params.items():
             draw.text((int(25 * s), y_offset), f"• {name}: {val}", fill='darkblue', font=param_font)
-            y_offset += int(12 * s)
+            y_offset += int(16 * s)
         
-        # Parameter evolution tracking (right side)
-        param_box_x = int(900 * s)
+        # Parameter evolution tracking (right side) — closer to molecule
+        param_box_x = int(680 * s)
         draw.rectangle([param_box_x-5, int(80 * s), param_box_x+int(290 * s), int(450 * s)], outline='black', width=1)
-        draw.text((param_box_x, int(85 * s)), "📊 Parameter Evolution History:", fill='black', font=small_font)
+        draw.text((param_box_x, int(85 * s)), "📊 Parameter Evolution History:", fill='black', font=small_font_bold)
         
-        history_y = int(105 * s)
+        history_y = int(112 * s)
         hist_len = min(len(self.performance_evolution.get(model_type, [])), 4)
         start_idx = max(0, len(self.performance_evolution.get(model_type, [])) - hist_len)
         for idx in range(start_idx, start_idx + hist_len):
-            draw.text((param_box_x, history_y), f"Iteration {idx}:", fill='black', font=param_font)
-            history_y += int(12 * s)
+            draw.text((param_box_x, history_y), f"Iteration {idx}:", fill='black', font=param_font_bold)
+            history_y += int(16 * s)
             params = self.get_parameters_for_iteration(model_type, idx)
             for pname, pval in params.items():
                 draw.text((param_box_x + int(10 * s), history_y), f"• {pname}: {pval}", fill='darkgreen', font=param_font)
-                history_y += int(11 * s)
+                history_y += int(14 * s)
             q_list = self.quality_evolution.get(model_type, [])
             q_val = q_list[idx] if idx < len(q_list) else 0.0
             draw.text((param_box_x + int(10 * s), history_y), f"→ Quality: {q_val:.3f}", fill='blue', font=param_font)
-            history_y += int(20 * s)
+            history_y += int(22 * s)
         
-        # Legend
-        legend_x = int(900 * s)
+        # Legend — closer and bold header
+        legend_x = int(680 * s)
         legend_y = int(460 * s)
-        draw.text((legend_x, legend_y), "🎨 Contribution Legend:", fill='black', font=small_font)
+        draw.text((legend_x, legend_y), "🎨 Contribution Legend:", fill='black', font=small_font_bold)
         colors_legend = [
             ("High Positive", (0, 0, 200)),
             ("Med Positive", (100, 100, 255)),
@@ -516,11 +527,11 @@ class DynamicParameterMovieCreator:
             ("Med Negative", (255, 100, 100)),
             ("High Negative", (200, 0, 0))
         ]
-        leg_y = legend_y + int(15 * s)
+        leg_y = legend_y + int(18 * s)
         for label, color in colors_legend:
-            draw.rectangle([legend_x, leg_y, legend_x+int(15 * s), leg_y+int(12 * s)], fill=color)
-            draw.text((legend_x+int(20 * s), leg_y), label, fill='black', font=param_font)
-            leg_y += int(15 * s)
+            draw.rectangle([legend_x, leg_y, legend_x+int(18 * s), leg_y+int(14 * s)], fill=color)
+            draw.text((legend_x+int(24 * s), leg_y), label, fill='black', font=param_font)
+            leg_y += int(18 * s)
         
         # Panels row (bottom) — dynamic spacing for consistent layout
         px, py = int(50 * s), int(600 * s)
@@ -728,8 +739,8 @@ class DynamicParameterMovieCreator:
                 ax.imshow(img)
                 progress = (frame_idx + 1) / len(frames)
                 ax.text(0.02, 0.02, f"Agentic Progress: {progress:.0%} ({frame_idx+1}/{len(frames)})", 
-                        transform=ax.transAxes, fontsize=14, fontweight='bold',
-                        bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.8))
+                        transform=ax.transAxes, fontsize=24, fontweight='bold',
+                        bbox=dict(boxstyle="round,pad=0.35", facecolor="yellow", alpha=0.9))
             return [ax]
         
         ani = animation.FuncAnimation(fig, animate, frames=len(frames), interval=4000, blit=False, repeat=True)
@@ -932,8 +943,8 @@ class DynamicParameterMovieCreator:
                 ax.imshow(img)
                 progress = (frame_idx + 1) / len(frames)
                 ax.text(0.02, 0.02, f"Agentic Progress: {progress:.0%} ({frame_idx+1}/{len(frames)})", 
-                        transform=ax.transAxes, fontsize=14, fontweight='bold',
-                        bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.8))
+                        transform=ax.transAxes, fontsize=24, fontweight='bold',
+                        bbox=dict(boxstyle="round,pad=0.35", facecolor="yellow", alpha=0.9))
             return [ax]
         ani = animation.FuncAnimation(fig, animate, frames=len(frames), interval=4000, blit=False, repeat=True)
         movie_path = (Path(__file__).resolve().parent / f"{model_name}_dynamic_parameters.gif")
@@ -1130,8 +1141,8 @@ class DynamicParameterMovieCreator:
                 ax.imshow(img)
                 progress = (frame_idx + 1) / len(frames)
                 ax.text(0.02, 0.02, f"Agentic Progress: {progress:.0%} ({frame_idx+1}/{len(frames)})", 
-                        transform=ax.transAxes, fontsize=14, fontweight='bold',
-                        bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.8))
+                        transform=ax.transAxes, fontsize=24, fontweight='bold',
+                        bbox=dict(boxstyle="round,pad=0.35", facecolor="yellow", alpha=0.9))
             return [ax]
         ani = animation.FuncAnimation(fig, animate, frames=len(frames), interval=4000, blit=False, repeat=True)
         movie_path = (Path(__file__).resolve().parent / f"{model_name}_dynamic_parameters.gif")
@@ -1150,3 +1161,112 @@ class DynamicParameterMovieCreator:
         except Exception:
             pass
         return movie_path
+
+    def _smiles_atom_spans(self, smiles: str):
+        """Return list of (start, end, atom_index) spans for atoms in a SMILES string.
+        Handles bracket atoms [..] as one atom and organic subset atoms (B,C,N,O,P,S,F,I,b,c,n,o,p,s)
+        plus two-letter halogens Cl/Br outside brackets. This is a heuristic but works well for most SMILES.
+        """
+        spans = []
+        i = 0
+        atom_idx = 0
+        L = len(smiles)
+        while i < L:
+            ch = smiles[i]
+            if ch == '[':
+                j = i + 1
+                while j < L and smiles[j] != ']':
+                    j += 1
+                j = min(j + 1, L)  # include closing ']'
+                spans.append((i, j, atom_idx))
+                atom_idx += 1
+                i = j
+                continue
+            # two-letter halogens outside brackets
+            if i + 1 < L and smiles[i:i+2] in ("Cl", "Br"):
+                spans.append((i, i+2, atom_idx))
+                atom_idx += 1
+                i += 2
+                continue
+            # organic subset atoms
+            if ch in set('BCNOPSFIbcnops'):
+                spans.append((i, i+1, atom_idx))
+                atom_idx += 1
+                i += 1
+                continue
+            # not an atom (bonds, ring digits, branches, etc.)
+            i += 1
+        return spans
+
+    def _chemberta_cls_attention_to_atom_weights(self, model, tokenizer, smiles: str, max_len: int, att_layer: int, att_head: int):
+        """Map ChemBERTa [CLS]->token attention to RDKit atom weights using token offset mappings into SMILES.
+        Returns dict: atom_index -> weight (normalized to [-1, 1] scale).
+        """
+        try:
+            import torch
+        except Exception:
+            return {}
+        # Tokenize with offsets (Fast tokenizer required for offsets)
+        enc = tokenizer(
+            smiles,
+            truncation=True,
+            padding='max_length',
+            max_length=max_len,
+            return_tensors='pt',
+            return_offsets_mapping=True
+        )
+        input_ids = enc['input_ids']
+        attention_mask = enc['attention_mask']
+        offsets = enc.get('offset_mapping', None)
+        device = torch.device('cpu')
+        input_ids = input_ids.to(device)
+        attention_mask = attention_mask.to(device)
+        with torch.no_grad():
+            out = model(input_ids=input_ids, attention_mask=attention_mask, output_attentions=True)
+        attentions = out.attentions  # tuple(layers) of (B, H, L, L)
+        if not attentions:
+            return {}
+        num_layers = len(attentions)
+        layer_idx = att_layer if att_layer >= 0 else num_layers + att_layer
+        layer_idx = max(0, min(layer_idx, num_layers - 1))
+        att = attentions[layer_idx][0]  # (H, L, L)
+        num_heads = att.shape[0]
+        head_idx = max(0, min(att_head, num_heads - 1))
+        # Attention from CLS (position 0) to all tokens
+        cls_to_tok = att[head_idx, 0, :]  # (L,)
+        # Build SMILES atom spans
+        atom_spans = self._smiles_atom_spans(smiles)
+        if not atom_spans:
+            return {}
+        # Aggregate token attention to atoms via offset overlap
+        atom_weights = {idx: 0.0 for _, _, idx in atom_spans}
+        L = cls_to_tok.shape[0]
+        # If no offsets (e.g., slow tokenizer), distribute over non-special tokens uniformly
+        if offsets is None:
+            # heuristic: map non-padding tokens (mask==1) excluding position 0 to atoms round-robin
+            tok_indices = [i for i in range(1, int(attention_mask.sum().item()))]
+            if not tok_indices:
+                return {}
+            per_tok = float(torch.sum(cls_to_tok[tok_indices]).item()) / max(1, len(atom_weights))
+            for k in atom_weights.keys():
+                atom_weights[k] = per_tok
+        else:
+            offs = offsets[0].tolist()  # list of (start, end)
+            for ti in range(min(L, len(offs))):
+                start, end = offs[ti]
+                if (end - start) <= 0:
+                    continue  # special or padding token
+                w = float(cls_to_tok[ti].item())
+                # assign to any atom span overlapping this token span
+                for a_start, a_end, a_idx in atom_spans:
+                    if not (end <= a_start or start >= a_end):  # overlap
+                        atom_weights[a_idx] = atom_weights.get(a_idx, 0.0) + w
+        # Normalize to [-1, 1]
+        if atom_weights:
+            vals = list(atom_weights.values())
+            vmax = max(vals) if vals else 1.0
+            if vmax == 0:
+                vmax = 1.0
+            for k in list(atom_weights.keys()):
+                atom_weights[k] = float(atom_weights[k] / vmax)
+        return atom_weights
