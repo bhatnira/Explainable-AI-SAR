@@ -24,6 +24,14 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.inspection import permutation_importance
+# --- Added for GraphConv support ---
+import warnings
+warnings.filterwarnings('ignore')
+try:
+    import deepchem as dc
+    from rdkit.Chem import PandasTools
+except Exception:
+    dc = None
 
 class DynamicParameterMovieCreator:
     def __init__(self):
@@ -37,17 +45,24 @@ class DynamicParameterMovieCreator:
         self.target_smiles = None
         self.sampled_df = None
         
-        # Define parameter exploration spaces for circular fingerprints (Morgan)
+        # Define parameter exploration spaces
         self.parameter_spaces = {
             'circular_fingerprint': {
                 'radius': [1, 2, 3, 4, 2, 3],
                 'nBits': [1024, 2048, 4096, 2048, 1024, 2048]
+            },
+            # --- New: GraphConv parameter space ---
+            'graphconv': {
+                'hidden_dim': [32, 64, 128, 96],
+                'num_layers': [2, 3, 4, 3],
+                'dropout': [0.1, 0.2, 0.3, 0.25],
+                'learning_rate': [1e-3, 5e-4, 1e-3, 7e-4]
             }
         }
         
-        # Placeholders (no longer used for simulation); computed dynamically now
-        self.quality_evolution = {'circular_fingerprint': []}
-        self.performance_evolution = {'circular_fingerprint': []}
+        # Placeholders (computed dynamically now)
+        self.quality_evolution = {'circular_fingerprint': [], 'graphconv': []}
+        self.performance_evolution = {'circular_fingerprint': [], 'graphconv': []}
 
     # ------------------------ Data & Features ------------------------
     def _data_path(self):
@@ -239,27 +254,37 @@ class DynamicParameterMovieCreator:
         draw.text((param_box_x, 85), "📊 Parameter Evolution History:", fill='black', font=small_font)
         
         history_y = 105
-        hist_len = min(len(self.performance_evolution['circular_fingerprint']), 4)
-        start_idx = max(0, len(self.performance_evolution['circular_fingerprint']) - hist_len)
+        # --- generalized history for model_type ---
+        hist_len = min(len(self.performance_evolution.get(model_type, [])), 4)
+        start_idx = max(0, len(self.performance_evolution.get(model_type, [])) - hist_len)
         for idx in range(start_idx, start_idx + hist_len):
             draw.text((param_box_x, history_y), f"Iteration {idx}:", fill='black', font=param_font)
             history_y += 12
-            params = self.get_parameters_for_iteration('circular_fingerprint', idx)
+            params = self.get_parameters_for_iteration(model_type, idx)
             for pname, pval in params.items():
                 draw.text((param_box_x + 10, history_y), f"• {pname}: {pval}", fill='darkgreen', font=param_font)
                 history_y += 11
-            q = self.quality_evolution['circular_fingerprint'][idx]
+            q = self.quality_evolution.get(model_type, [0]* (idx+1))[idx]
             draw.text((param_box_x + 10, history_y), f"→ Quality: {q:.3f}", fill='blue', font=param_font)
             history_y += 20
         
-        # Strategy (kept)
+        # Strategy (model-specific)
         strategy_y = 350
         draw.text((param_box_x, strategy_y), "🎯 Agentic Strategy:", fill='black', font=small_font)
-        strategy_info = [
-            "• Exploring radius 1-4 for coverage",
-            "• Testing nBits 1024-4096 for detail",
-            "• TPOT optimizes downstream model"
-        ]
+        if model_type == 'circular_fingerprint':
+            strategy_info = [
+                "• Exploring radius 1-4 for coverage",
+                "• Testing nBits 1024-4096 for detail",
+                "• TPOT optimizes downstream model"
+            ]
+        elif model_type == 'graphconv':
+            strategy_info = [
+                "• Varying hidden_dim for capacity",
+                "• Adjusting num_layers for depth",
+                "• Tuning dropout & lr for stability"
+            ]
+        else:
+            strategy_info = ["• Iterative parameter search", "• Balance perf & explainability"]
         strat_y = strategy_y + 15
         for info in strategy_info:
             draw.text((param_box_x, strat_y), info, fill='purple', font=param_font)
@@ -293,7 +318,7 @@ class DynamicParameterMovieCreator:
 
     # ------------------------ Training & Movie Creation ------------------------
     def create_dynamic_parameter_movie(self, model_name):
-        """Create movie showing parameter changes with real TPOT training"""
+        """Create movie showing parameter changes with real TPOT training (circular_fingerprint)"""
         if model_name != 'circular_fingerprint':
             print(f"⏭️ Skipping unsupported model: {model_name}")
             return None
@@ -457,14 +482,241 @@ class DynamicParameterMovieCreator:
         
         return movie_path
 
+    # --- New: GraphConv dynamic movie ---
+    def create_graphconv_dynamic_parameter_movie(self):
+        model_name = 'graphconv'
+        if dc is None:
+            print("❌ DeepChem is not installed. Please install with: pip install deepchem")
+            return None
+        print(f"🎬 Creating dynamic parameter movie for {model_name}")
+        frames = []
+        script_dir = Path(__file__).resolve().parent
+        frame_dir = script_dir / "frames"
+        frame_dir.mkdir(exist_ok=True)
+        
+        # Load and sample data
+        df = self.load_and_sample_data()
+        smiles = df['cleanedMol'].values.tolist()
+        labels = df['classLabel'].values.astype(int)
+        
+        # Featurize once with DeepChem
+        featurizer = dc.feat.ConvMolFeaturizer()
+        X_all = featurizer.featurize(smiles)
+        dataset = dc.data.NumpyDataset(X_all, labels, ids=np.array(smiles))
+        splitter = dc.splits.RandomSplitter()
+        train_dataset, test_dataset = splitter.train_test_split(dataset, frac_train=0.8, seed=42)
+        
+        # Choose consistent target molecule
+        if self.target_smiles is None:
+            self.target_smiles = str(test_dataset.ids[0])
+            print(f"   🎯 Target molecule selected for visualization: {self.target_smiles}")
+        mol = Chem.MolFromSmiles(self.target_smiles)
+        
+        # Reset evolutions
+        self.quality_evolution['graphconv'] = []
+        self.performance_evolution['graphconv'] = []
+        
+        # Iterate through parameter sets (use 4 iterations)
+        for iteration in range(4):
+            params = self.get_parameters_for_iteration(model_name, iteration)
+            hidden_dim = int(params['hidden_dim'])
+            num_layers = int(params['num_layers'])
+            dropout = float(params['dropout'])
+            lr = float(params['learning_rate'])
+            print(f"\n🔧 Iteration {iteration} params: hidden_dim={hidden_dim}, num_layers={num_layers}, dropout={dropout}, lr={lr}")
+            
+            # Build and train model
+            try:
+                graph_layers = [hidden_dim] * num_layers
+                model = dc.models.GraphConvModel(
+                    n_tasks=1,
+                    graph_conv_layers=graph_layers,
+                    dense_layer_size=hidden_dim,
+                    dropout=dropout,
+                    learning_rate=lr,
+                    batch_size=32,
+                    mode='classification'
+                )
+                model.fit(train_dataset, nb_epoch=10)
+            except Exception as e:
+                print(f"❌ GraphConv training failed at iteration {iteration}: {e}")
+                continue
+            
+            # Evaluate performance on test set
+            try:
+                y_pred_raw = model.predict(test_dataset)
+                # Attempt to extract probabilities for class 1
+                y_proba = None
+                arr = np.array(y_pred_raw)
+                # Common shapes: (N, 1, 2) or (N, 2)
+                if arr.ndim == 3 and arr.shape[-1] >= 2:
+                    y_proba = arr[:, 0, 1]
+                elif arr.ndim == 2 and arr.shape[-1] >= 2:
+                    y_proba = arr[:, 1]
+                else:
+                    # Fallback to sigmoid of first logit or raw
+                    y_proba = 1 / (1 + np.exp(-arr.squeeze()))
+                y_pred = (y_proba > 0.5).astype(int)
+                acc = accuracy_score(test_dataset.y.astype(int), y_pred)
+                try:
+                    auc = roc_auc_score(test_dataset.y.astype(int), y_proba)
+                except Exception:
+                    auc = np.nan
+                print(f"   ✅ Acc={acc:.3f}, AUC={auc if not np.isnan(auc) else 'NA'}")
+            except Exception as e:
+                print(f"❌ Evaluation failed: {e}")
+                acc = 0.0
+            
+            # Compute fragment-based atom contributions for target molecule
+            atom_weights = {}
+            try:
+                # Build temporary SDF for the target molecule
+                sdf_path = frame_dir / "tmp_target.sdf"
+                df_tmp = pd.DataFrame({'cleanedMol': [self.target_smiles]})
+                df_tmp['Molecule'] = [Chem.MolFromSmiles(self.target_smiles)]
+                df_tmp['Name'] = ['Target']
+                PandasTools.WriteSDF(df_tmp[df_tmp['Molecule'].notna()], str(sdf_path), molColName='Molecule', idName='Name', properties=[])
+                
+                # Whole molecule dataset
+                loader_whole = dc.data.SDFLoader(tasks=[], featurizer=dc.feat.ConvMolFeaturizer(), sanitize=True)
+                dataset_whole = loader_whole.create_dataset(str(sdf_path), shard_size=2000)
+                # Fragment dataset (per-atom fragmentation)
+                loader_frag = dc.data.SDFLoader(tasks=[], featurizer=dc.feat.ConvMolFeaturizer(per_atom_fragmentation=True), sanitize=True)
+                dataset_frag = loader_frag.create_dataset(str(sdf_path), shard_size=2000)
+                tr = dc.trans.FlatteningTransformer(dataset_frag)
+                dataset_frag = tr.transform(dataset_frag)
+                
+                # Predict
+                pred_whole = model.predict(dataset_whole)
+                pred_frag = model.predict(dataset_frag)
+                # Convert to prob of class 1
+                def to_prob(arr):
+                    arr = np.array(arr)
+                    if arr.ndim == 3 and arr.shape[-1] >= 2:
+                        return arr[:, 0, 1]
+                    if arr.ndim == 2 and arr.shape[-1] >= 2:
+                        return arr[:, 1]
+                    return 1 / (1 + np.exp(-arr.squeeze()))
+                p_whole = to_prob(pred_whole)
+                p_frag = to_prob(pred_frag)
+                # Align lengths
+                n = min(len(p_whole), len(dataset_whole.ids))
+                p_whole = p_whole[:n]
+                ids_whole = dataset_whole.ids[:n]
+                m = min(len(p_frag), len(dataset_frag.ids))
+                p_frag = p_frag[:m]
+                ids_frag = dataset_frag.ids[:m]
+                
+                # Merge into per-molecule contribution series
+                pred_whole_df = pd.DataFrame(p_whole, index=ids_whole, columns=["Molecule"]) 
+                pred_frag_df = pd.DataFrame(p_frag, index=ids_frag, columns=["Fragment"]) 
+                df_merged = pd.merge(pred_frag_df, pred_whole_df, right_index=True, left_index=True, how='left')
+                df_merged['Contrib'] = df_merged['Molecule'] - df_merged['Fragment']
+                
+                # Extract sequence of fragment contributions for our smiles
+                # Note: With our SDF, index may be 'Target' or the SMILES; handle both
+                contrib_series = None
+                if self.target_smiles in df_merged.index:
+                    contrib_series = df_merged.loc[self.target_smiles, 'Contrib']
+                elif 'Target' in df_merged.index:
+                    contrib_series = df_merged.loc['Target', 'Contrib']
+                else:
+                    contrib_series = df_merged['Contrib']
+                
+                # Map first N contributions to atom indices (heuristic consistent with interpret_graphconv)
+                if hasattr(contrib_series, 'values') and getattr(contrib_series, 'shape', ()):
+                    contrib_values = np.array(contrib_series).flatten()
+                else:
+                    contrib_values = np.array([float(contrib_series)])
+                num_heavy = mol.GetNumHeavyAtoms() if mol is not None else 0
+                if num_heavy > 0:
+                    vals = np.zeros(num_heavy)
+                    k = min(num_heavy, len(contrib_values))
+                    vals[:k] = contrib_values[:k]
+                    atom_weights = {i: float(vals[i]) for i in range(num_heavy)}
+            except Exception as e:
+                print(f"   ⚠️ Contribution generation failed: {e}")
+                atom_weights = {}
+            finally:
+                # Clean temp sdf
+                try:
+                    if 'sdf_path' in locals() and Path(sdf_path).exists():
+                        Path(sdf_path).unlink()
+                except Exception:
+                    pass
+            
+            # Quality score (coverage + magnitude)
+            if mol is not None and atom_weights:
+                aw = np.array(list(atom_weights.values()), dtype=float)
+                coverage = len(atom_weights) / max(1, mol.GetNumAtoms())
+                magnitude = float(np.mean(np.abs(aw) / (np.max(np.abs(aw)) + 1e-9)))
+                quality_score = float(0.5 * coverage + 0.5 * magnitude)
+            else:
+                quality_score = 0.0
+            performance_score = float(acc)
+            
+            self.quality_evolution['graphconv'].append(quality_score)
+            self.performance_evolution['graphconv'].append(performance_score)
+            
+            # Draw frame
+            title = "Dynamic Parameter Optimization - GraphConv"
+            canvas = self.draw_molecule_with_dynamic_parameters(
+                atom_weights, title, iteration, quality_score, performance_score, model_name, params, mol
+            )
+            if canvas is not None:
+                frame_path = frame_dir / f"{model_name}_dynamic_frame_{iteration:02d}.png"
+                canvas.save(frame_path)
+                frames.append(str(frame_path))
+        
+        if not frames:
+            print(f"❌ No frames created for {model_name}")
+            return None
+        
+        # Create animation
+        fig, ax = plt.subplots(figsize=(15, 11))
+        ax.axis('off')
+        def animate(frame_idx):
+            ax.clear()
+            ax.axis('off')
+            if frame_idx < len(frames):
+                img = plt.imread(frames[frame_idx])
+                ax.imshow(img)
+                progress = (frame_idx + 1) / len(frames)
+                ax.text(0.02, 0.02, f"Agentic Progress: {progress:.0%} ({frame_idx+1}/{len(frames)})", 
+                        transform=ax.transAxes, fontsize=14, fontweight='bold',
+                        bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.8))
+            return [ax]
+        ani = animation.FuncAnimation(fig, animate, frames=len(frames), interval=4000, blit=False, repeat=True)
+        movie_path = (Path(__file__).resolve().parent / f"{model_name}_dynamic_parameters.gif")
+        print(f"💾 Saving {model_name} dynamic parameter movie to {movie_path}")
+        ani.save(str(movie_path), writer='pillow', fps=1.0)
+        plt.close()
+        
+        # Cleanup
+        for frame_path in frames:
+            try:
+                Path(frame_path).unlink()
+            except Exception:
+                pass
+        try:
+            frame_dir.rmdir()
+        except Exception:
+            pass
+        return movie_path
+
     def create_all_dynamic_movies(self):
-        """Create dynamic parameter movie for circular fingerprint only"""
+        """Create dynamic parameter movies for supported models"""
         print("🎬 Creating Dynamic Parameter Evolution Movies")
         print("=" * 60)
         created_movies = []
+        # Circular FP
         movie_path = self.create_dynamic_parameter_movie('circular_fingerprint')
         if movie_path:
             created_movies.append(movie_path)
+        # GraphConv
+        gc_movie = self.create_graphconv_dynamic_parameter_movie()
+        if gc_movie:
+            created_movies.append(gc_movie)
         print(f"\n🎉 Dynamic parameter movie creation complete! Created {len(created_movies)} movie(s).")
         for movie in created_movies:
             print(f"  • {movie}")
