@@ -385,8 +385,25 @@ class DynamicParameterMovieCreator:
         img = self._fig_to_image(fig)
         return img, auc_val, ap_val
 
+    def _reduce_metrics_list(self, metrics_list):
+        """Aggregate list of metric dicts into mean/std/n per key.
+        Returns dict like { 'Q': {'mean': m, 'std': s, 'n': n}, ... } or None.
+        """
+        if not metrics_list:
+            return None
+        keys = ['Q', 'S', 'M', 'C', 'F']
+        agg = {}
+        for k in keys:
+            vals = [float(m[k]) for m in metrics_list if m is not None and m.get(k) is not None and not np.isnan(float(m.get(k)))]
+            if vals:
+                n = len(vals)
+                mean_v = float(np.mean(vals))
+                std_v = float(np.std(vals, ddof=1)) if n > 1 else 0.0
+                agg[k] = {'mean': mean_v, 'std': std_v, 'n': n}
+        return agg if agg else None
+
     def draw_molecule_with_dynamic_parameters(self, atom_weights, title, iteration, quality_score, performance_score, model_type, params, mol,
-                                              auc_val=None, auprc_val=None, acc_img=None, cm_img=None, rocpr_img=None, advanced_metrics=None):
+                                              auc_val=None, auprc_val=None, acc_img=None, cm_img=None, rocpr_img=None, advanced_metrics=None, dataset_adv_metrics=None):
         if mol is None:
             return None
         
@@ -537,6 +554,32 @@ class DynamicParameterMovieCreator:
         else:
             draw.text((param_box_x + int(10 * s), history_y), "• (metrics unavailable)", fill='gray', font=param_font)
             history_y += int(14 * s)
+        
+        # Dataset-level summary (test split)
+        history_y += int(10 * s)
+        if dataset_adv_metrics:
+            draw.text((param_box_x, history_y), "📈 Quantitative Analysis (test):", fill='black', font=small_font_bold)
+            history_y += int(18 * s)
+            metric_names = {
+                'Q': 'Composite Quality',
+                'S': 'Sparsity',
+                'M': 'Normalized Magnitude',
+                'C': 'Fragment Coherence',
+                'F': 'Directional Faithfulness',
+            }
+            for key in ['Q', 'S', 'M', 'C', 'F']:
+                stats = dataset_adv_metrics.get(key)
+                if isinstance(stats, dict) and 'mean' in stats:
+                    mean_v = stats.get('mean')
+                    std_v = stats.get('std', 0.0)
+                    n_v = stats.get('n', 0)
+                    label = metric_names.get(key, key)
+                    draw.text(
+                        (param_box_x + int(10 * s), history_y),
+                        f"• {label}: {mean_v:.2f} (±{std_v:.2f}, n={n_v})",
+                        fill='black', font=param_font
+                    )
+                    history_y += int(14 * s)
         
         # Legend — closer and bold header
         legend_x = int(680 * s)
@@ -702,7 +745,35 @@ class DynamicParameterMovieCreator:
                 print(f"   🎯 Target molecule selected for visualization: {self.target_smiles}")
             mol = Chem.MolFromSmiles(self.target_smiles)
             
-            # Compute signed feature importances via permutation importance
+            # Dataset-level advanced metrics on test set (mean across molecules)
+            dataset_metrics = []
+            try:
+                # precompute feature importances once
+                signed_imps_full = self.compute_signed_feature_importance(pipeline, X_test, y_test)
+                for smi in smiles_test:
+                    m_i = Chem.MolFromSmiles(smi)
+                    if m_i is None:
+                        continue
+                    x_i = self.featurize([smi], radius, nBits, useFeatures, useChirality)[0]
+                    active_idx = np.where(x_i > 0)[0]
+                    if active_idx.size == 0:
+                        continue
+                    # restrict to active bits
+                    feat_w = {int(j): float(signed_imps_full[j]) for j in active_idx if abs(signed_imps_full[j]) > 0}
+                    atom_w = self.map_fragment_weights_to_atoms(m_i, feat_w, radius=radius, nBits=nBits, useFeatures=useFeatures, useChirality=useChirality)
+                    def _proba_fn_local(smiles_s: str):
+                        try:
+                            Xs = self.featurize([smiles_s], radius, nBits, useFeatures, useChirality)
+                            return float(pipeline.predict_proba(Xs)[0, 1])
+                        except Exception:
+                            return 0.0
+                    m_dict = self._compute_advanced_quality(atom_w, m_i, proba_fn=_proba_fn_local)
+                    dataset_metrics.append(m_dict)
+            except Exception:
+                dataset_metrics = []
+            dataset_adv = self._reduce_metrics_list(dataset_metrics)
+            
+            # Compute signed feature importances for target
             signed_imps = self.compute_signed_feature_importance(pipeline, X_test, y_test)
             
             # Get feature weights active in target sample
@@ -747,7 +818,7 @@ class DynamicParameterMovieCreator:
             canvas = self.draw_molecule_with_dynamic_parameters(
                 atom_weights, title, iteration, quality_score, performance_score, model_name, params, mol,
                 auc_val=self.last_auc[model_name], auprc_val=self.last_auprc[model_name],
-                acc_img=acc_img, cm_img=cm_img, rocpr_img=rocpr_img, advanced_metrics=advanced_metrics
+                acc_img=acc_img, cm_img=cm_img, rocpr_img=rocpr_img, advanced_metrics=advanced_metrics, dataset_adv_metrics=dataset_adv
             )
             if canvas is not None:
                 frame_path = frame_dir / f"{model_name}_dynamic_frame_{iteration:02d}.png"
@@ -981,6 +1052,84 @@ class DynamicParameterMovieCreator:
             performance_score = float(acc)
             self.quality_evolution['graphconv'].append(quality_score)
             
+            # Dataset-level advanced metrics (mean across a subset of test molecules)
+            dataset_adv = None
+            try:
+                test_smiles = list(test_dataset.ids)
+                subset = test_smiles[:min(25, len(test_smiles))]
+                dataset_metrics = []
+                for smi in subset:
+                    m_i = Chem.MolFromSmiles(smi)
+                    if m_i is None:
+                        continue
+                    # Compute atom weights for this molecule via fragment predictions (same as target path)
+                    atom_w = {}
+                    try:
+                        sdf_path_i = frame_dir / "tmp_ds_target.sdf"
+                        df_tmp = pd.DataFrame({'cleanedMol': [smi]})
+                        df_tmp['Molecule'] = [Chem.MolFromSmiles(smi)]
+                        df_tmp['Name'] = ['DS']
+                        with silence_fds(), suppress_stderr():
+                            PandasTools.WriteSDF(df_tmp[df_tmp['Molecule'].notna()], str(sdf_path_i), molColName='Molecule', idName='Name', properties=[])
+                            loader_whole_i = dc.data.SDFLoader(tasks=[], featurizer=dc.feat.ConvMolFeaturizer(), sanitize=True)
+                            ds_whole_i = loader_whole_i.create_dataset(str(sdf_path_i), shard_size=2000)
+                            loader_frag_i = dc.data.SDFLoader(tasks=[], featurizer=dc.feat.ConvMolFeaturizer(per_atom_fragmentation=True), sanitize=True)
+                            ds_frag_i = loader_frag_i.create_dataset(str(sdf_path_i), shard_size=2000)
+                            tr_i = dc.trans.FlatteningTransformer(ds_frag_i)
+                            ds_frag_i = tr_i.transform(ds_frag_i)
+                            pred_whole_i = model.predict(ds_whole_i)
+                            pred_frag_i = model.predict(ds_frag_i)
+                        arr_whole_i = np.array(pred_whole_i)
+                        if arr_whole_i.ndim == 3 and arr_whole_i.shape[-1] >= 2:
+                            proba_whole_i = float(arr_whole_i[0, 0, 1])
+                        elif arr_whole_i.ndim == 2 and arr_whole_i.shape[-1] >= 2:
+                            proba_whole_i = float(arr_whole_i[0, 1])
+                        else:
+                            proba_whole_i = float(1 / (1 + np.exp(-arr_whole_i.squeeze()[0])))
+                        n_atoms_i = int(m_i.GetNumAtoms()) if m_i is not None else 0
+                        arr_frag_i = np.array(pred_frag_i)
+                        if arr_frag_i.ndim == 3 and arr_frag_i.shape[-1] >= 2:
+                            proba_frag_i = arr_frag_i[:, 0, 1]
+                        elif arr_frag_i.ndim == 2 and arr_frag_i.shape[-1] >= 2:
+                            proba_frag_i = arr_frag_i[:, 1]
+                        else:
+                            proba_frag_i = 1 / (1 + np.exp(-arr_frag_i.squeeze()))
+                        proba_frag_i = np.array(proba_frag_i).reshape(-1)
+                        vals_i = proba_frag_i[:n_atoms_i] - proba_whole_i
+                        max_abs_i = float(np.max(np.abs(vals_i))) if np.size(vals_i) > 0 else 0.0
+                        if max_abs_i > 0:
+                            vals_i = (vals_i / max_abs_i).astype(float)
+                        else:
+                            vals_i = np.zeros_like(vals_i, dtype=float)
+                        atom_w = {int(i): float(vals_i[i]) for i in range(min(n_atoms_i, len(vals_i)))}
+                    except Exception:
+                        atom_w = {}
+                    finally:
+                        try:
+                            if 'sdf_path_i' in locals() and Path(sdf_path_i).exists():
+                                Path(sdf_path_i).unlink()
+                        except Exception:
+                            pass
+                    def _proba_fn_local(smiles_s: str):
+                        try:
+                            feats = featurizer.featurize([smiles_s])
+                            ds_local = dc.data.NumpyDataset(feats, np.array([0]), ids=np.array([smiles_s]))
+                            with silence_fds(), suppress_stderr():
+                                raw = model.predict(ds_local)
+                            arr1 = np.array(raw)
+                            if arr1.ndim == 3 and arr1.shape[-1] >= 2:
+                                return float(arr1[0, 0, 1])
+                            if arr1.ndim == 2 and arr1.shape[-1] >= 2:
+                                return float(arr1[0, 1])
+                            return float(1 / (1 + np.exp(-arr1.squeeze()[0])))
+                        except Exception:
+                            return 0.0
+                    m_dict = self._compute_advanced_quality(atom_w, m_i, proba_fn=_proba_fn_local)
+                    dataset_metrics.append(m_dict)
+                dataset_adv = self._reduce_metrics_list(dataset_metrics)
+            except Exception:
+                dataset_adv = None
+            
             # Advanced quality metrics (S, M, C, F)
             def _gc_proba_fn(smiles_s: str):
                 try:
@@ -1004,7 +1153,7 @@ class DynamicParameterMovieCreator:
             canvas = self.draw_molecule_with_dynamic_parameters(
                 atom_weights, title, iteration, quality_score, performance_score, 'graphconv', params, mol,
                 auc_val=self.last_auc['graphconv'], auprc_val=self.last_auprc['graphconv'],
-                acc_img=acc_img, cm_img=cm_img, rocpr_img=rocpr_img, advanced_metrics=advanced_metrics
+                acc_img=acc_img, cm_img=cm_img, rocpr_img=rocpr_img, advanced_metrics=advanced_metrics, dataset_adv_metrics=dataset_adv
             )
             if canvas is not None:
                 frame_path = frame_dir / f"{model_name}_dynamic_frame_{iteration:02d}.png"
@@ -1032,7 +1181,6 @@ class DynamicParameterMovieCreator:
                 fig.text(0.985, 0.02, f"Agentic Progress: {progress:.0%} ({frame_idx+1}/{len(frames)})",
                          ha='right', va='bottom', fontsize=12, fontweight='bold',
                          bbox=dict(boxstyle="round,pad=0.25", facecolor="white", edgecolor="black", alpha=0.95))
-            return [ax]
         ani = animation.FuncAnimation(fig, animate, frames=len(frames), interval=4000, blit=False, repeat=True)
         movie_path = (Path(__file__).resolve().parent / f"{model_name}_dynamic_parameters.gif")
         print(f"💾 Saving {model_name} dynamic parameter movie to {movie_path}")
@@ -1185,7 +1333,40 @@ class DynamicParameterMovieCreator:
                 print(f"❌ ChemBERTa training failed at iteration {iteration}: {e}")
                 continue
             
-            # Interpretation via [CLS]→tokens attention mapped to atoms
+            # Dataset-level advanced metrics (test mean across a subset)
+            dataset_adv = None
+            try:
+                dataset_metrics = []
+                subset = list(smiles_test)[:min(25, len(smiles_test))]
+                for smi in subset:
+                    m_i = Chem.MolFromSmiles(smi)
+                    if m_i is None:
+                        continue
+                    atom_w_i = self._chemberta_cls_attention_to_atom_weights(
+                        model, tokenizer, smi, max_len, att_layer, att_head
+                    )
+                    def _cb_proba_fn_local(smiles_s: str):
+                        try:
+                            enc = tokenizer(
+                                smiles_s,
+                                truncation=True,
+                                padding='max_length',
+                                max_length=max_len,
+                                return_tensors='pt'
+                            )
+                            with torch.no_grad():
+                                out = model(**{k: v for k, v in enc.items()})
+                                p = torch.softmax(out.logits, dim=-1)[0, 1].item()
+                            return float(p)
+                        except Exception:
+                            return 0.0
+                    m_dict = self._compute_advanced_quality(atom_w_i, m_i, proba_fn=_cb_proba_fn_local)
+                    dataset_metrics.append(m_dict)
+                dataset_adv = self._reduce_metrics_list(dataset_metrics)
+            except Exception:
+                dataset_adv = None
+            
+            # Interpretation via [CLS]→tokens attention mapped to atoms (target)
             atom_weights = self._chemberta_cls_attention_to_atom_weights(
                 model, tokenizer, self.target_smiles, max_len, att_layer, att_head
             )
@@ -1201,10 +1382,9 @@ class DynamicParameterMovieCreator:
             
             self.quality_evolution['chemberta'].append(quality_score)
 
-            # Advanced quality metrics (S, M, C, F)
+            # Advanced quality metrics (S, M, C, F) for target
             def _cb_proba_fn(smiles_s: str):
                 try:
-                    import torch
                     model.eval()
                     enc = tokenizer(
                         smiles_s,
@@ -1226,7 +1406,7 @@ class DynamicParameterMovieCreator:
             canvas = self.draw_molecule_with_dynamic_parameters(
                 atom_weights, title, iteration, quality_score, performance_score, 'chemberta', params, mol,
                 auc_val=self.last_auc['chemberta'], auprc_val=self.last_auprc['chemberta'],
-                acc_img=acc_img, cm_img=cm_img, rocpr_img=rocpr_img, advanced_metrics=advanced_metrics
+                acc_img=acc_img, cm_img=cm_img, rocpr_img=rocpr_img, advanced_metrics=advanced_metrics, dataset_adv_metrics=dataset_adv
             )
             if canvas is not None:
                 frame_path = frame_dir / f"{model_name}_dynamic_frame_{iteration:02d}.png"
@@ -1254,7 +1434,6 @@ class DynamicParameterMovieCreator:
                 fig.text(0.985, 0.02, f"Agentic Progress: {progress:.0%} ({frame_idx+1}/{len(frames)})",
                          ha='right', va='bottom', fontsize=12, fontweight='bold',
                          bbox=dict(boxstyle="round,pad=0.25", facecolor="white", edgecolor="black", alpha=0.95))
-            return [ax]
         ani = animation.FuncAnimation(fig, animate, frames=len(frames), interval=4000, blit=False, repeat=True)
         movie_path = (Path(__file__).resolve().parent / f"{model_name}_dynamic_parameters.gif")
         print(f"💾 Saving {model_name} dynamic parameter movie to {movie_path}")
@@ -1274,14 +1453,13 @@ class DynamicParameterMovieCreator:
         return movie_path
 
     def _smiles_atom_spans(self, smiles: str):
-        """Return list of (start, end, atom_index) spans for atoms in a SMILES string.
-        Handles bracket atoms [..] as one atom and organic subset atoms (B,C,N,O,P,S,F,I,b,c,n,o,p,s)
-        plus two-letter halogens Cl/Br outside brackets. This is a heuristic but works well for most SMILES.
+        """Return list of (start, end, atom_index) tuples for each atom in the SMILES.
+        Handles brackets, organic subset atoms, and two-letter halogens.
         """
         spans = []
+        L = len(smiles)
         i = 0
         atom_idx = 0
-        L = len(smiles)
         while i < L:
             ch = smiles[i]
             if ch == '[':
@@ -1325,6 +1503,7 @@ class DynamicParameterMovieCreator:
             max_length=max_len,
             return_tensors='pt',
             return_offsets_mapping=True
+
         )
         input_ids = enc['input_ids']
         attention_mask = enc['attention_mask']
@@ -1352,7 +1531,7 @@ class DynamicParameterMovieCreator:
         # Aggregate token attention to atoms via offset overlap
         atom_weights = {idx: 0.0 for _, _, idx in atom_spans}
         L = cls_to_tok.shape[0]
-        # If no offsets (e.g., slow tokenizer), distribute over non-special tokens uniformly
+        # If no offsets (e.g., slow tokenizer), distribute over non-padding tokens uniformly
         if offsets is None:
             # heuristic: map non-padding tokens (mask==1) excluding position 0 to atoms round-robin
             tok_indices = [i for i in range(1, int(attention_mask.sum().item()))]
@@ -1476,7 +1655,7 @@ class DynamicParameterMovieCreator:
         weights default equal across available sub-metrics.
         """
         subs = self._compute_sparsity_magnitude_coherence(atom_weights, mol)
-        F = self._directional_faithfulness(atom_weights, mol, proba_fn) if proba_fn else 0.0
+        F = self._directional_faithfulness(atom_weights, mol, proba_fn) if proba_fn else  0.0
         available = {"S": subs["S"], "M": subs["M"], "C": subs["C"], "F": F}
         # determine weights only for available metrics
         active_keys = [k for k, v in available.items() if v is not None]
