@@ -14,6 +14,9 @@ import json
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import numpy as np
+# Add colormap utilities to match chemberta_attention.png style
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
 from pathlib import Path
 from rdkit import Chem
 from rdkit.Chem import AllChem
@@ -35,6 +38,8 @@ except Exception:
 
 # --- New: sklearn baseline imports for fallback when TPOT fails ---
 from sklearn.linear_model import LogisticRegression
+# --- New: extra metrics & curves ---
+from sklearn.metrics import confusion_matrix, roc_curve, precision_recall_curve, average_precision_score
 
 class DynamicParameterMovieCreator:
     def __init__(self):
@@ -74,6 +79,9 @@ class DynamicParameterMovieCreator:
         # Placeholders (computed dynamically now)
         self.quality_evolution = {'circular_fingerprint': [], 'graphconv': [], 'chemberta': []}
         self.performance_evolution = {'circular_fingerprint': [], 'graphconv': [], 'chemberta': []}
+        # Track last AUC/AUPRC for display
+        self.last_auc = {'circular_fingerprint': None, 'graphconv': None, 'chemberta': None}
+        self.last_auprc = {'circular_fingerprint': None, 'graphconv': None, 'chemberta': None}
 
     # ------------------------ Data & Features ------------------------
     def _data_path(self):
@@ -183,10 +191,114 @@ class DynamicParameterMovieCreator:
         signed = importances * signs
         return signed
 
+    # ------------------------ Small plot renderers ------------------------
+    def _fig_to_image(self, fig, size=(280, 180)):
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', bbox_inches='tight', dpi=160)
+        plt.close(fig)
+        buf.seek(0)
+        img = Image.open(buf).convert('RGB')
+        return img.resize(size, Image.BICUBIC)
+
+    def _plot_accuracy_evolution(self, model_type):
+        vals = self.performance_evolution.get(model_type, [])
+        fig, ax = plt.subplots(figsize=(3, 2))
+        ax.plot(range(len(vals)), vals, marker='o', color='tab:blue')
+        ax.set_title('Accuracy Evolution')
+        ax.set_xlabel('Iter')
+        ax.set_ylabel('Acc')
+        ax.set_ylim(0, 1)
+        ax.grid(True, ls='--', alpha=0.3)
+        return self._fig_to_image(fig)
+
+    def _plot_confusion_matrix(self, cm):
+        fig, ax = plt.subplots(figsize=(3, 2))
+        im = ax.imshow(cm, cmap='Blues')
+        for i in range(cm.shape[0]):
+            for j in range(cm.shape[1]):
+                ax.text(j, i, str(int(cm[i, j])), ha='center', va='center', color='black', fontsize=9)
+        ax.set_title('Confusion Matrix')
+        ax.set_xlabel('Pred')
+        ax.set_ylabel('True')
+        ax.set_xticks([0, 1]); ax.set_yticks([0, 1])
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        return self._fig_to_image(fig)
+
+    def _plot_roc_pr(self, y_true, y_scores):
+        fig, axes = plt.subplots(1, 2, figsize=(6, 2))
+        auc_val = None
+        ap_val = None
+        if y_scores is not None and np.ndim(y_scores) == 1 and len(y_scores) == len(y_true):
+            fpr, tpr, _ = roc_curve(y_true, y_scores)
+            try:
+                auc_val = roc_auc_score(y_true, y_scores)
+            except Exception:
+                auc_val = None
+            axes[0].plot(fpr, tpr, color='tab:red')
+            axes[0].plot([0, 1], [0, 1], 'k--', lw=0.8)
+            axes[0].set_title(f'ROC (AUC={auc_val:.3f})' if auc_val is not None else 'ROC (AUC=NA)')
+            axes[0].set_xlabel('FPR'); axes[0].set_ylabel('TPR')
+            axes[0].grid(True, ls='--', alpha=0.3)
+            prec, rec, _ = precision_recall_curve(y_true, y_scores)
+            try:
+                ap_val = average_precision_score(y_true, y_scores)
+            except Exception:
+                ap_val = None
+            axes[1].plot(rec, prec, color='tab:green')
+            axes[1].set_title(f'PR (AUPRC={ap_val:.3f})' if ap_val is not None else 'PR (AUPRC=NA)')
+            axes[1].set_xlabel('Recall'); axes[1].set_ylabel('Precision')
+            axes[1].grid(True, ls='--', alpha=0.3)
+        else:
+            for ax in axes:
+                ax.text(0.5, 0.5, 'No probabilities', ha='center', va='center')
+                ax.axis('off')
+        plt.tight_layout()
+        img = self._fig_to_image(fig, size=(560, 180))
+        return img, auc_val, ap_val
+
+    # ------------------------ ChemBERTa attention helper ------------------------
+    def _chemberta_cls_attention_to_atom_weights(self, model, tokenizer, smiles, max_len, att_layer, att_head):
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return {}
+        try:
+            # Match interpret_chemberta.py: ensure eager attention outputs
+            try:
+                model.config.attn_implementation = "eager"
+            except Exception:
+                pass
+            model.config.output_attentions = True
+            inputs = tokenizer(smiles, return_tensors='pt', truncation=True, max_length=max_len)
+            import torch
+            device = next(model.parameters()).device
+            with torch.no_grad():
+                outputs = model(**{k: v.to(device) for k, v in inputs.items()}, output_attentions=True)
+            attentions = outputs.attentions
+            layer_idx = att_layer if att_layer >= 0 else (len(attentions) + att_layer)
+            layer_idx = max(0, min(layer_idx, len(attentions)-1))
+            head_idx = max(0, min(att_head, attentions[layer_idx].shape[1]-1))
+            att = attentions[layer_idx][0, head_idx].detach().cpu().numpy()
+            tokens = tokenizer.convert_ids_to_tokens(inputs['input_ids'][0])
+            atom_count = mol.GetNumAtoms()
+            token_atom_indices = list(range(1, min(len(tokens), 1 + atom_count)))
+            atom_weights = {}
+            if len(token_atom_indices) > 0:
+                cls_attention = att[0, token_atom_indices]
+                if cls_attention.sum() > 0:
+                    cls_attention = cls_attention / cls_attention.sum()
+                else:
+                    cls_attention = np.ones_like(cls_attention) / len(cls_attention)
+                for i in range(len(token_atom_indices)):
+                    atom_weights[i] = float(cls_attention[i])
+            return atom_weights
+        except Exception:
+            return {}
+
     # ------------------------ Drawing ------------------------
     def draw_molecule_with_dynamic_parameters(self, contributions, title, iteration, 
-                                            quality_score, performance_score, model_type, current_params, mol):
-        """Draw molecule with dynamically changing parameters (layout preserved)"""
+                                             quality_score, performance_score, model_type, current_params, mol,
+                                             auc_val=None, auprc_val=None, acc_img=None, cm_img=None, rocpr_img=None):
+        """Draw molecule with dynamically changing parameters (layout + metric panels)"""
         if mol is None:
             return None
         
@@ -199,32 +311,51 @@ class DynamicParameterMovieCreator:
             if 0 <= idx < num_atoms:
                 contrib_array[idx] = w
         
-        if num_atoms > 0:
-            max_abs = max(1e-9, float(np.max(np.abs(contrib_array))))
-            normalized_contribs = [0.5 + 0.5 * (c / max_abs) for c in contrib_array]  # map [-1,1] -> [0,1]
-        else:
-            normalized_contribs = []
-        
-        # Set atom colors based on contributions
+        # Determine coloring strategy
         atom_colors = {}
-        for i, contrib in enumerate(normalized_contribs):
-            # Positive -> blue scale, Negative -> red scale, Neutral -> gray
-            if contrib >= 0.55:  # positive
-                strength = (contrib - 0.55) / 0.45
-                atom_colors[i] = (0.2 * (1 - strength), 0.2 * (1 - strength), 1.0 * (0.6 + 0.4 * strength))
-            elif contrib <= 0.45:  # negative
-                strength = (0.45 - contrib) / 0.45
-                atom_colors[i] = (1.0 * (0.6 + 0.4 * strength), 0.2 * (1 - strength), 0.2 * (1 - strength))
+        atom_radii = {}
+        if model_type == 'chemberta' and num_atoms > 0 and np.any(contrib_array != 0):
+            # Use RdYlBu_r colormap and radii scaling similar to chemberta_attention.py
+            vmin = float(contrib_array.min())
+            vmax = float(contrib_array.max())
+            if vmax - vmin < 1e-12:
+                vmax = vmin + 1e-12
+            norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+            cmap = cm.get_cmap('RdYlBu_r')
+            for i in range(num_atoms):
+                w = float(contrib_array[i])
+                rgba = cmap(norm(w))
+                atom_colors[i] = tuple(rgba[:3])
+                # scale radius 0.3..0.7 with normalized weight
+                wn = (w - vmin) / (vmax - vmin)
+                atom_radii[i] = 0.3 + 0.4 * wn
+        else:
+            # Generic positive/negative mapping
+            if num_atoms > 0:
+                max_abs = max(1e-9, float(np.max(np.abs(contrib_array))))
+                normalized_contribs = [0.5 + 0.5 * (c / max_abs) for c in contrib_array]
             else:
-                atom_colors[i] = (0.85, 0.85, 0.85)
+                normalized_contribs = []
+            for i, contrib in enumerate(normalized_contribs):
+                if contrib >= 0.55:
+                    strength = (contrib - 0.55) / 0.45
+                    atom_colors[i] = (0.2 * (1 - strength), 0.2 * (1 - strength), 1.0 * (0.6 + 0.4 * strength))
+                elif contrib <= 0.45:
+                    strength = (0.45 - contrib) / 0.45
+                    atom_colors[i] = (1.0 * (0.6 + 0.4 * strength), 0.2 * (1 - strength), 0.2 * (1 - strength))
+                else:
+                    atom_colors[i] = (0.85, 0.85, 0.85)
         
         drawer.SetFontSize(14)
-        drawer.DrawMolecule(mol, highlightAtoms=list(range(num_atoms)), highlightAtomColors=atom_colors)
+        if atom_radii:
+            drawer.DrawMolecule(mol, highlightAtoms=list(range(num_atoms)), highlightAtomColors=atom_colors, highlightAtomRadii=atom_radii)
+        else:
+            drawer.DrawMolecule(mol, highlightAtoms=list(range(num_atoms)), highlightAtomColors=atom_colors)
         drawer.FinishDrawing()
         
         img_data = drawer.GetDrawingText()
         img = Image.open(io.BytesIO(img_data))
-        canvas = Image.new('RGB', (900, 650), 'white')
+        canvas = Image.new('RGB', (1200, 800), 'white')
         canvas.paste(img, (50, 50))
         
         draw = ImageDraw.Draw(canvas)
@@ -244,11 +375,13 @@ class DynamicParameterMovieCreator:
         draw.text((20, 460), f"Model: {model_type.replace('_', ' ').title()}", 
                  fill=self.colors.get(model_type, 'black'), font=metric_font)
         
-        # Metrics
+        # Metrics (include AUC/AUPRC)
         draw.text((350, 460), f"Iteration: {iteration}", fill='black', font=metric_font)
         draw.text((20, 480), f"Quality: {quality_score:.3f}", fill='blue', font=small_font)
-        draw.text((150, 480), f"Performance: {performance_score:.3f}", fill='green', font=small_font)
-        draw.text((300, 480), f"Combined: {0.6*performance_score + 0.4*quality_score:.3f}", 
+        draw.text((150, 480), f"Accuracy: {performance_score:.3f}", fill='green', font=small_font)
+        draw.text((280, 480), f"ROC AUC: {auc_val:.3f}" if auc_val is not None else "ROC AUC: NA", fill='darkred', font=small_font)
+        draw.text((420, 480), f"AUPRC: {auprc_val:.3f}" if auprc_val is not None else "AUPRC: NA", fill='darkgreen', font=small_font)
+        draw.text((300, 500), f"Combined: {0.6*performance_score + 0.4*quality_score:.3f}", 
                  fill='purple', font=small_font)
         
         # Current parameters box
@@ -260,12 +393,11 @@ class DynamicParameterMovieCreator:
             y_offset += 12
         
         # Parameter evolution tracking (right side)
-        param_box_x = 600
+        param_box_x = 900
         draw.rectangle([param_box_x-5, 80, param_box_x+290, 450], outline='black', width=1)
         draw.text((param_box_x, 85), "📊 Parameter Evolution History:", fill='black', font=small_font)
         
         history_y = 105
-        # --- generalized history for model_type ---
         hist_len = min(len(self.performance_evolution.get(model_type, [])), 4)
         start_idx = max(0, len(self.performance_evolution.get(model_type, [])) - hist_len)
         for idx in range(start_idx, start_idx + hist_len):
@@ -308,7 +440,7 @@ class DynamicParameterMovieCreator:
             strat_y += 12
         
         # Legend
-        legend_x = 600
+        legend_x = 900
         legend_y = 460
         draw.text((legend_x, legend_y), "🎨 Contribution Legend:", fill='black', font=small_font)
         colors_legend = [
@@ -323,6 +455,15 @@ class DynamicParameterMovieCreator:
             draw.rectangle([legend_x, leg_y, legend_x+15, leg_y+12], fill=color)
             draw.text((legend_x+20, leg_y), label, fill='black', font=param_font)
             leg_y += 15
+        
+        # Panels row (bottom)
+        px, py = 50, 600
+        if acc_img is not None:
+            canvas.paste(acc_img, (px, py))
+        if cm_img is not None:
+            canvas.paste(cm_img, (px + 300, py))
+        if rocpr_img is not None:
+            canvas.paste(rocpr_img, (px + 600, py))
         
         return canvas
 
@@ -423,10 +564,23 @@ class DynamicParameterMovieCreator:
                     y_proba = pipeline.predict_proba(X_test)[:, 1]
                     auc = roc_auc_score(y_test, y_proba)
                 except Exception:
+                    y_proba = None
                     auc = np.nan
+                cm = confusion_matrix(y_test, y_pred)
+                rocpr_img, auc_val, ap_val = self._plot_roc_pr(y_test, y_proba)
+                cm_img = self._plot_confusion_matrix(cm)
+                acc_img = self._plot_accuracy_evolution(model_name)
+                self.last_auc[model_name] = auc_val
+                self.last_auprc[model_name] = ap_val
                 print(f"   ✅ Acc={acc:.3f}, AUC={auc if not np.isnan(auc) else 'NA'}, time={train_time:.1f}s")
             except Exception:
                 acc, auc = 0.0, np.nan
+                y_proba = None
+                cm_img = self._plot_confusion_matrix(np.array([[0,0],[0,0]]))
+                rocpr_img, auc_val, ap_val = self._plot_roc_pr(np.array([0,1]), np.array([0.0, 1.0]))
+                acc_img = self._plot_accuracy_evolution(model_name)
+                self.last_auc[model_name] = auc_val
+                self.last_auprc[model_name] = ap_val
             
             # Choose consistent target molecule
             if self.target_smiles is None:
@@ -462,14 +616,15 @@ class DynamicParameterMovieCreator:
             else:
                 quality_score = 0.0
             performance_score = float(acc)
-            
             self.quality_evolution['circular_fingerprint'].append(quality_score)
             self.performance_evolution['circular_fingerprint'].append(performance_score)
             
             # Draw frame
             title = f"Dynamic Parameter Optimization - Circular Fingerprint"
             canvas = self.draw_molecule_with_dynamic_parameters(
-                atom_weights, title, iteration, quality_score, performance_score, model_name, params, mol
+                atom_weights, title, iteration, quality_score, performance_score, model_name, params, mol,
+                auc_val=self.last_auc[model_name], auprc_val=self.last_auprc[model_name],
+                acc_img=acc_img, cm_img=cm_img, rocpr_img=rocpr_img
             )
             if canvas is not None:
                 frame_path = frame_dir / f"{model_name}_dynamic_frame_{iteration:02d}.png"
@@ -595,34 +750,39 @@ class DynamicParameterMovieCreator:
                     auc = roc_auc_score(test_dataset.y.astype(int), y_proba)
                 except Exception:
                     auc = np.nan
+                cm = confusion_matrix(test_dataset.y.astype(int), y_pred)
+                rocpr_img, auc_val, ap_val = self._plot_roc_pr(test_dataset.y.astype(int), y_proba)
+                cm_img = self._plot_confusion_matrix(cm)
+                acc_img = self._plot_accuracy_evolution('graphconv')
+                self.last_auc['graphconv'] = auc_val
+                self.last_auprc['graphconv'] = ap_val
                 print(f"   ✅ Acc={acc:.3f}, AUC={auc if not np.isnan(auc) else 'NA'}")
             except Exception as e:
                 print(f"❌ Evaluation failed: {e}")
                 acc = 0.0
+                y_proba = None
+                cm_img = self._plot_confusion_matrix(np.array([[0,0],[0,0]]))
+                rocpr_img, auc_val, ap_val = self._plot_roc_pr(np.array([0,1]), np.array([0.0, 1.0]))
+                acc_img = self._plot_accuracy_evolution('graphconv')
+                self.last_auc['graphconv'] = auc_val
+                self.last_auprc['graphconv'] = ap_val
             
             # Compute fragment-based atom contributions for target molecule
             atom_weights = {}
             try:
-                # Build temporary SDF for the target molecule
                 sdf_path = frame_dir / "tmp_target.sdf"
                 df_tmp = pd.DataFrame({'cleanedMol': [self.target_smiles]})
                 df_tmp['Molecule'] = [Chem.MolFromSmiles(self.target_smiles)]
                 df_tmp['Name'] = ['Target']
                 PandasTools.WriteSDF(df_tmp[df_tmp['Molecule'].notna()], str(sdf_path), molColName='Molecule', idName='Name', properties=[])
-                
-                # Whole molecule dataset
                 loader_whole = dc.data.SDFLoader(tasks=[], featurizer=dc.feat.ConvMolFeaturizer(), sanitize=True)
                 dataset_whole = loader_whole.create_dataset(str(sdf_path), shard_size=2000)
-                # Fragment dataset (per-atom fragmentation)
                 loader_frag = dc.data.SDFLoader(tasks=[], featurizer=dc.feat.ConvMolFeaturizer(per_atom_fragmentation=True), sanitize=True)
                 dataset_frag = loader_frag.create_dataset(str(sdf_path), shard_size=2000)
                 tr = dc.trans.FlatteningTransformer(dataset_frag)
                 dataset_frag = tr.transform(dataset_frag)
-                
-                # Predict
                 pred_whole = model.predict(dataset_whole)
                 pred_frag = model.predict(dataset_frag)
-                # Convert to prob of class 1
                 def to_prob(arr):
                     arr = np.array(arr)
                     if arr.ndim == 3 and arr.shape[-1] >= 2:
@@ -632,22 +792,16 @@ class DynamicParameterMovieCreator:
                     return 1 / (1 + np.exp(-arr.squeeze()))
                 p_whole = to_prob(pred_whole)
                 p_frag = to_prob(pred_frag)
-                # Align lengths
                 n = min(len(p_whole), len(dataset_whole.ids))
                 p_whole = p_whole[:n]
                 ids_whole = dataset_whole.ids[:n]
                 m = min(len(p_frag), len(dataset_frag.ids))
                 p_frag = p_frag[:m]
                 ids_frag = dataset_frag.ids[:m]
-                
-                # Merge into per-molecule contribution series
                 pred_whole_df = pd.DataFrame(p_whole, index=ids_whole, columns=["Molecule"]) 
                 pred_frag_df = pd.DataFrame(p_frag, index=ids_frag, columns=["Fragment"]) 
                 df_merged = pd.merge(pred_frag_df, pred_whole_df, right_index=True, left_index=True, how='left')
                 df_merged['Contrib'] = df_merged['Molecule'] - df_merged['Fragment']
-                
-                # Extract sequence of fragment contributions for our smiles
-                # Note: With our SDF, index may be 'Target' or the SMILES; handle both
                 contrib_series = None
                 if self.target_smiles in df_merged.index:
                     contrib_series = df_merged.loc[self.target_smiles, 'Contrib']
@@ -655,9 +809,7 @@ class DynamicParameterMovieCreator:
                     contrib_series = df_merged.loc['Target', 'Contrib']
                 else:
                     contrib_series = df_merged['Contrib']
-                
-                # Map first N contributions to atom indices (heuristic consistent with interpret_graphconv)
-                if hasattr(contrib_series, 'values') and getattr(contrib_series, 'shape', ()):
+                if hasattr(contrib_series, 'values') and getattr(contrib_series, 'shape', ()): 
                     contrib_values = np.array(contrib_series).flatten()
                 else:
                     contrib_values = np.array([float(contrib_series)])
@@ -671,14 +823,13 @@ class DynamicParameterMovieCreator:
                 print(f"   ⚠️ Contribution generation failed: {e}")
                 atom_weights = {}
             finally:
-                # Clean temp sdf
                 try:
                     if 'sdf_path' in locals() and Path(sdf_path).exists():
                         Path(sdf_path).unlink()
                 except Exception:
                     pass
             
-            # Quality score (coverage + magnitude)
+            # Quality score
             if mol is not None and atom_weights:
                 aw = np.array(list(atom_weights.values()), dtype=float)
                 coverage = len(atom_weights) / max(1, mol.GetNumAtoms())
@@ -687,14 +838,15 @@ class DynamicParameterMovieCreator:
             else:
                 quality_score = 0.0
             performance_score = float(acc)
-            
             self.quality_evolution['graphconv'].append(quality_score)
             self.performance_evolution['graphconv'].append(performance_score)
             
             # Draw frame
             title = "Dynamic Parameter Optimization - GraphConv"
             canvas = self.draw_molecule_with_dynamic_parameters(
-                atom_weights, title, iteration, quality_score, performance_score, model_name, params, mol
+                atom_weights, title, iteration, quality_score, performance_score, 'graphconv', params, mol,
+                auc_val=self.last_auc['graphconv'], auprc_val=self.last_auprc['graphconv'],
+                acc_img=acc_img, cm_img=cm_img, rocpr_img=rocpr_img
             )
             if canvas is not None:
                 frame_path = frame_dir / f"{model_name}_dynamic_frame_{iteration:02d}.png"
@@ -843,6 +995,12 @@ class DynamicParameterMovieCreator:
                     auc = roc_auc_score(labels_list, probs)
                 except Exception:
                     auc = np.nan
+                cm = confusion_matrix(labels_list, preds)
+                rocpr_img, auc_val, ap_val = self._plot_roc_pr(np.array(labels_list), np.array(probs))
+                cm_img = self._plot_confusion_matrix(cm)
+                acc_img = self._plot_accuracy_evolution(model_name)
+                self.last_auc[model_name] = auc_val
+                self.last_auprc[model_name] = ap_val
                 print(f"   ✅ Acc={acc:.3f}, AUC={auc if not np.isnan(auc) else 'NA'}")
             except Exception as e:
                 print(f"❌ ChemBERTa training failed at iteration {iteration}: {e}")
@@ -871,6 +1029,8 @@ class DynamicParameterMovieCreator:
                     cls_attention = att[0, token_atom_indices]
                     if cls_attention.sum() > 0:
                         cls_attention = cls_attention / cls_attention.sum()
+                    else:
+                        cls_attention = np.ones_like(cls_attention) / len(cls_attention)
                     for i in range(len(token_atom_indices)):
                         atom_weights[i] = float(cls_attention[i])
             except Exception as e:
@@ -892,7 +1052,9 @@ class DynamicParameterMovieCreator:
             # Draw frame
             title = 'Dynamic Parameter Optimization - ChemBERTa'
             canvas = self.draw_molecule_with_dynamic_parameters(
-                atom_weights, title, iteration, quality_score, performance_score, model_name, params, mol
+                atom_weights, title, iteration, quality_score, performance_score, 'chemberta', params, mol,
+                auc_val=self.last_auc['chemberta'], auprc_val=self.last_auprc['chemberta'],
+                acc_img=acc_img, cm_img=cm_img, rocpr_img=rocpr_img
             )
             if canvas is not None:
                 frame_path = frame_dir / f"{model_name}_dynamic_frame_{iteration:02d}.png"
@@ -934,33 +1096,3 @@ class DynamicParameterMovieCreator:
         except Exception:
             pass
         return movie_path
-
-    def create_all_dynamic_movies(self):
-        """Create dynamic parameter movies for supported models"""
-        print("🎬 Creating Dynamic Parameter Evolution Movies")
-        print("=" * 60)
-        created_movies = []
-        # Circular FP
-        movie_path = self.create_dynamic_parameter_movie('circular_fingerprint')
-        if movie_path:
-            created_movies.append(movie_path)
-        # GraphConv
-        gc_movie = self.create_graphconv_dynamic_parameter_movie()
-        if gc_movie:
-            created_movies.append(gc_movie)
-        # ChemBERTa
-        cb_movie = self.create_chemberta_dynamic_parameter_movie()
-        if cb_movie:
-            created_movies.append(cb_movie)
-        print(f"\n🎉 Dynamic parameter movie creation complete! Created {len(created_movies)} movie(s).")
-        for movie in created_movies:
-            print(f"  • {movie}")
-        return created_movies
-
-def main():
-    """Main function"""
-    creator = DynamicParameterMovieCreator()
-    creator.create_all_dynamic_movies()
-
-if __name__ == "__main__":
-    main()
