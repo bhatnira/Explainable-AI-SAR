@@ -1,0 +1,22 @@
+name: xaisar
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - rdkit
+  - numpy=1.26
+  - pandas
+  - scikit-learn
+  - matplotlib
+  - pillow
+  - openpyxl
+  - pip:
+      - deepchem==2.7.1
+      - tensorflow==2.12.*
+      - transformers>=4.40
+      - tpot==0.12.1
+      - xgboost==1.7.*
+      - torch==2.1.*
+      - tokenizers
+      - urllib3<2
