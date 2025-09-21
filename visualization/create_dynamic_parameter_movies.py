@@ -33,6 +33,9 @@ try:
 except Exception:
     dc = None
 
+# --- New: sklearn baseline imports for fallback when TPOT fails ---
+from sklearn.linear_model import LogisticRegression
+
 class DynamicParameterMovieCreator:
     def __init__(self):
         self.colors = {
@@ -57,12 +60,20 @@ class DynamicParameterMovieCreator:
                 'num_layers': [2, 3, 4, 3],
                 'dropout': [0.1, 0.2, 0.3, 0.25],
                 'learning_rate': [1e-3, 5e-4, 1e-3, 7e-4]
+            },
+            # --- New: ChemBERTa parameter space ---
+            'chemberta': {
+                'learning_rate': [2e-5, 1e-5, 3e-5, 2e-5],
+                'num_train_epochs': [1, 1, 2, 2],
+                'max_seq_length': [128, 256, 512, 256],
+                'attention_layer': [-1, -2, -1, -3],
+                'attention_head': [0, 3, 5, 0]
             }
         }
         
         # Placeholders (computed dynamically now)
-        self.quality_evolution = {'circular_fingerprint': [], 'graphconv': []}
-        self.performance_evolution = {'circular_fingerprint': [], 'graphconv': []}
+        self.quality_evolution = {'circular_fingerprint': [], 'graphconv': [], 'chemberta': []}
+        self.performance_evolution = {'circular_fingerprint': [], 'graphconv': [], 'chemberta': []}
 
     # ------------------------ Data & Features ------------------------
     def _data_path(self):
@@ -275,13 +286,19 @@ class DynamicParameterMovieCreator:
             strategy_info = [
                 "• Exploring radius 1-4 for coverage",
                 "• Testing nBits 1024-4096 for detail",
-                "• TPOT optimizes downstream model"
+                "• TPOT or sklearn baseline optimizes downstream model"
             ]
         elif model_type == 'graphconv':
             strategy_info = [
                 "• Varying hidden_dim for capacity",
                 "• Adjusting num_layers for depth",
                 "• Tuning dropout & lr for stability"
+            ]
+        elif model_type == 'chemberta':
+            strategy_info = [
+                "• Tune lr/epochs/seq length",
+                "• Vary attention layer/head for interpretability",
+                "• Use [CLS] attention → atom weights"
             ]
         else:
             strategy_info = ["• Iterative parameter search", "• Balance perf & explainability"]
@@ -316,9 +333,18 @@ class DynamicParameterMovieCreator:
             params[param_name] = values[iteration % len(values)]
         return params
 
+    # --- New: sklearn fallback trainer ---
+    def _train_sklearn_fallback(self, X_train, y_train):
+        """Train a simple, robust sklearn baseline when TPOT is unavailable or fails."""
+        clf = LogisticRegression(solver='liblinear', class_weight='balanced', max_iter=1000)
+        clf.fit(X_train, y_train)
+        return clf
+
     # ------------------------ Training & Movie Creation ------------------------
     def create_dynamic_parameter_movie(self, model_name):
-        """Create movie showing parameter changes with real TPOT training (circular_fingerprint)"""
+        """Create movie showing parameter changes with real TPOT training (circular_fingerprint)
+        Falls back to a sklearn LogisticRegression baseline if TPOT is not installed or fails.
+        """
         if model_name != 'circular_fingerprint':
             print(f"⏭️ Skipping unsupported model: {model_name}")
             return None
@@ -358,7 +384,9 @@ class DynamicParameterMovieCreator:
                 X, y, smiles, test_size=0.2, random_state=42, stratify=y
             )
             
-            # Train TPOT
+            # Train TPOT or fallback
+            pipeline = None
+            used_fallback = False
             try:
                 from tpot import TPOTClassifier
                 t0 = time.time()
@@ -376,11 +404,16 @@ class DynamicParameterMovieCreator:
                 pipeline = tpot.fitted_pipeline_
                 train_time = time.time() - t0
             except ImportError:
-                print("❌ TPOT not installed. Please install with: pip install tpot")
-                return None
+                print("⚠️ TPOT not installed. Using sklearn fallback (LogisticRegression).")
+                used_fallback = True
             except Exception as e:
-                print(f"❌ TPOT training failed at iteration {iteration}: {e}")
-                continue
+                print(f"⚠️ TPOT training failed at iteration {iteration}: {e}\n   → Falling back to sklearn baseline (LogisticRegression).")
+                used_fallback = True
+            
+            if used_fallback:
+                t0 = time.time()
+                pipeline = self._train_sklearn_fallback(X_train, y_train)
+                train_time = time.time() - t0
             
             # Evaluate
             try:
@@ -704,6 +737,204 @@ class DynamicParameterMovieCreator:
             pass
         return movie_path
 
+    # --- New: ChemBERTa dynamic movie ---
+    def create_chemberta_dynamic_parameter_movie(self):
+        model_name = 'chemberta'
+        print(f"🎬 Creating dynamic parameter movie for {model_name}")
+        frames = []
+        script_dir = Path(__file__).resolve().parent
+        frame_dir = script_dir / "frames"
+        frame_dir.mkdir(exist_ok=True)
+        
+        # Load and sample data
+        df = self.load_and_sample_data()
+        smiles = df['cleanedMol'].values
+        labels = df['classLabel'].values.astype(int)
+        from sklearn.model_selection import train_test_split
+        X_train, X_test, y_train, y_test, smiles_train, smiles_test = train_test_split(
+            smiles, labels, smiles, test_size=0.2, random_state=42, stratify=labels
+        )
+        
+        # Choose target molecule
+        if self.target_smiles is None:
+            self.target_smiles = str(smiles_test[0])
+            print(f"   🎯 Target molecule selected for visualization: {self.target_smiles}")
+        mol = Chem.MolFromSmiles(self.target_smiles)
+        
+        # Reset evolutions
+        self.quality_evolution['chemberta'] = []
+        self.performance_evolution['chemberta'] = []
+        
+        # Iterate parameter sets
+        for iteration in range(4):
+            params = self.get_parameters_for_iteration(model_name, iteration)
+            lr = float(params['learning_rate'])
+            epochs = int(params['num_train_epochs'])
+            max_len = int(params['max_seq_length'])
+            att_layer = int(params['attention_layer'])
+            att_head = int(params['attention_head'])
+            print(f"\n🔧 Iteration {iteration} params: lr={lr}, epochs={epochs}, max_len={max_len}, layer={att_layer}, head={att_head}")
+            
+            # Train ChemBERTa using Transformers directly
+            try:
+                import torch
+                from torch.utils.data import Dataset, DataLoader
+                from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoConfig
+                from sklearn.metrics import accuracy_score, roc_auc_score
+                
+                class SmilesDataset(Dataset):
+                    def __init__(self, smiles_list, labels_list, tokenizer, max_length):
+                        self.smiles = list(smiles_list)
+                        self.labels = list(labels_list)
+                        self.tokenizer = tokenizer
+                        self.max_length = max_length
+                    def __len__(self):
+                        return len(self.smiles)
+                    def __getitem__(self, idx):
+                        s = self.smiles[idx]
+                        enc = self.tokenizer(
+                            s,
+                            truncation=True,
+                            padding='max_length',
+                            max_length=self.max_length,
+                            return_tensors='pt'
+                        )
+                        item = {k: v.squeeze(0) for k, v in enc.items()}
+                        item['labels'] = torch.tensor(int(self.labels[idx]), dtype=torch.long)
+                        return item
+                
+                base_model = 'DeepChem/ChemBERTa-77M-MLM'
+                tokenizer = AutoTokenizer.from_pretrained(base_model, use_fast=True)
+                config = AutoConfig.from_pretrained(base_model, num_labels=2)
+                model = AutoModelForSequenceClassification.from_pretrained(base_model, config=config)
+                device = torch.device('cpu')
+                model.to(device)
+                optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+                
+                train_ds = SmilesDataset(X_train, y_train, tokenizer, max_len)
+                train_loader = DataLoader(train_ds, batch_size=8, shuffle=True)
+                
+                model.train()
+                for ep in range(max(1, epochs)):
+                    for batch in train_loader:
+                        batch = {k: v.to(device) for k, v in batch.items()}
+                        out = model(**batch)
+                        loss = out.loss
+                        optimizer.zero_grad()
+                        loss.backward()
+                        optimizer.step()
+                
+                # Evaluate
+                model.eval()
+                test_ds = SmilesDataset(X_test, y_test, tokenizer, max_len)
+                test_loader = DataLoader(test_ds, batch_size=16, shuffle=False)
+                probs, preds, labels_list = [], [], []
+                with torch.no_grad():
+                    for batch in test_loader:
+                        labels_list.extend(batch['labels'].numpy().tolist())
+                        batch = {k: v.to(device) for k, v in batch.items()}
+                        out = model(**batch)
+                        logits = out.logits
+                        p = torch.softmax(logits, dim=-1)[:, 1].cpu().numpy()
+                        probs.extend(p.tolist())
+                        preds.extend(logits.argmax(dim=-1).cpu().numpy().tolist())
+                acc = accuracy_score(labels_list, preds)
+                try:
+                    auc = roc_auc_score(labels_list, probs)
+                except Exception:
+                    auc = np.nan
+                print(f"   ✅ Acc={acc:.3f}, AUC={auc if not np.isnan(auc) else 'NA'}")
+            except Exception as e:
+                print(f"❌ ChemBERTa training failed at iteration {iteration}: {e}")
+                continue
+            
+            # Attention-based interpretation for target_smiles from the fine-tuned model
+            atom_weights = {}
+            try:
+                # Enable attentions for this forward pass
+                model.config.output_attentions = True
+                inputs = tokenizer(self.target_smiles, return_tensors='pt', truncation=True, max_length=max_len)
+                with torch.no_grad():
+                    outputs = model(**{k: v.to(device) for k, v in inputs.items()}, output_attentions=True)
+                attentions = outputs.attentions
+                # Select layer/head
+                layer_idx = att_layer if att_layer >= 0 else (len(attentions) + att_layer)
+                layer_idx = max(0, min(layer_idx, len(attentions)-1))
+                head_idx = max(0, min(att_head, attentions[layer_idx].shape[1]-1))
+                att = attentions[layer_idx][0, head_idx].detach().cpu().numpy()
+                # Map [CLS]→tokens to atoms heuristically
+                atom_count = mol.GetNumAtoms() if mol is not None else 0
+                tokens = tokenizer.convert_ids_to_tokens(inputs['input_ids'][0])
+                seq_len = len(tokens)
+                token_atom_indices = list(range(1, min(seq_len, 1 + atom_count)))
+                if len(token_atom_indices) > 0:
+                    cls_attention = att[0, token_atom_indices]
+                    if cls_attention.sum() > 0:
+                        cls_attention = cls_attention / cls_attention.sum()
+                    for i in range(len(token_atom_indices)):
+                        atom_weights[i] = float(cls_attention[i])
+            except Exception as e:
+                print(f"   ⚠️ Attention extraction failed: {e}")
+                atom_weights = {}
+            
+            # Quality score
+            if mol is not None and atom_weights:
+                aw = np.array(list(atom_weights.values()), dtype=float)
+                coverage = len(atom_weights) / max(1, mol.GetNumAtoms())
+                magnitude = float(np.mean(np.abs(aw) / (np.max(np.abs(aw)) + 1e-9)))
+                quality_score = float(0.5 * coverage + 0.5 * magnitude)
+            else:
+                quality_score = 0.0
+            performance_score = float(acc)
+            self.quality_evolution['chemberta'].append(quality_score)
+            self.performance_evolution['chemberta'].append(performance_score)
+            
+            # Draw frame
+            title = 'Dynamic Parameter Optimization - ChemBERTa'
+            canvas = self.draw_molecule_with_dynamic_parameters(
+                atom_weights, title, iteration, quality_score, performance_score, model_name, params, mol
+            )
+            if canvas is not None:
+                frame_path = frame_dir / f"{model_name}_dynamic_frame_{iteration:02d}.png"
+                canvas.save(frame_path)
+                frames.append(str(frame_path))
+        
+        if not frames:
+            print(f"❌ No frames created for {model_name}")
+            return None
+        
+        # Create animation
+        fig, ax = plt.subplots(figsize=(15, 11))
+        ax.axis('off')
+        def animate(frame_idx):
+            ax.clear()
+            ax.axis('off')
+            if frame_idx < len(frames):
+                img = plt.imread(frames[frame_idx])
+                ax.imshow(img)
+                progress = (frame_idx + 1) / len(frames)
+                ax.text(0.02, 0.02, f"Agentic Progress: {progress:.0%} ({frame_idx+1}/{len(frames)})", 
+                        transform=ax.transAxes, fontsize=14, fontweight='bold',
+                        bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.8))
+            return [ax]
+        ani = animation.FuncAnimation(fig, animate, frames=len(frames), interval=4000, blit=False, repeat=True)
+        movie_path = (Path(__file__).resolve().parent / f"{model_name}_dynamic_parameters.gif")
+        print(f"💾 Saving {model_name} dynamic parameter movie to {movie_path}")
+        ani.save(str(movie_path), writer='pillow', fps=1.0)
+        plt.close()
+        
+        # Cleanup
+        for frame_path in frames:
+            try:
+                Path(frame_path).unlink()
+            except Exception:
+                pass
+        try:
+            frame_dir.rmdir()
+        except Exception:
+            pass
+        return movie_path
+
     def create_all_dynamic_movies(self):
         """Create dynamic parameter movies for supported models"""
         print("🎬 Creating Dynamic Parameter Evolution Movies")
@@ -717,6 +948,10 @@ class DynamicParameterMovieCreator:
         gc_movie = self.create_graphconv_dynamic_parameter_movie()
         if gc_movie:
             created_movies.append(gc_movie)
+        # ChemBERTa
+        cb_movie = self.create_chemberta_dynamic_parameter_movie()
+        if cb_movie:
+            created_movies.append(cb_movie)
         print(f"\n🎉 Dynamic parameter movie creation complete! Created {len(created_movies)} movie(s).")
         for movie in created_movies:
             print(f"  • {movie}")
