@@ -72,6 +72,7 @@ try:
     warnings.filterwarnings("ignore", category=NotOpenSSLWarning)
 except Exception:
     pass
+from collections import defaultdict, Counter
 
 @contextlib.contextmanager
 def suppress_stderr():
@@ -538,6 +539,10 @@ class DynamicParameterMovieCreator:
             Mv = advanced_metrics.get('M', None)
             Cv = advanced_metrics.get('C', None)
             Fv = advanced_metrics.get('F', None)
+            # New collision metrics
+            Col = advanced_metrics.get('COLLISION_RATE', None)
+            AvgF = advanced_metrics.get('AVG_FRAGMENTS_PER_ACTIVE_BIT', None)
+            Ent = advanced_metrics.get('BIT_ENTROPY', None)
             if Qv is not None:
                 draw.text((param_box_x + int(10 * s), history_y), f"• Composite Quality: {Qv:.3f}", fill='blue', font=param_font)
                 history_y += int(14 * s)
@@ -553,6 +558,17 @@ class DynamicParameterMovieCreator:
             if Fv is not None:
                 draw.text((param_box_x + int(10 * s), history_y), f"• Directional Faithfulness: {Fv:.2f}", fill='black', font=param_font)
                 history_y += int(14 * s)
+            # Render collision metrics only for circular_fingerprint frames
+            if model_type == 'circular_fingerprint':
+                if Col is not None:
+                    draw.text((param_box_x + int(10 * s), history_y), f"• Collision Rate per Bit (avg): {Col:.4f}", fill='darkred', font=param_font)
+                    history_y += int(14 * s)
+                if AvgF is not None:
+                    draw.text((param_box_x + int(10 * s), history_y), f"• Avg Fragments per Active Bit: {AvgF:.2f}", fill='darkred', font=param_font)
+                    history_y += int(14 * s)
+                if Ent is not None:
+                    draw.text((param_box_x + int(10 * s), history_y), f"• Bit Entropy (avg): {Ent:.3f}", fill='darkred', font=param_font)
+                    history_y += int(14 * s)
         else:
             draw.text((param_box_x + int(10 * s), history_y), "• (metrics unavailable)", fill='gray', font=param_font)
             history_y += int(14 * s)
@@ -647,6 +663,10 @@ class DynamicParameterMovieCreator:
         smiles = df['cleanedMol'].values
         labels = df['classLabel'].values
         
+        # Precompute dataset-level bit-fragment stats for circular fingerprints (based on first iteration params)
+        # These are reused across iterations to keep comparisons fair per nBits/radius choice per iteration
+        # We'll recompute inside the loop per current params to reflect collision behavior for that config.
+        
         # Prepare target molecule (first from test split in first iteration)
         target_mol = None
         
@@ -663,6 +683,12 @@ class DynamicParameterMovieCreator:
             useChirality = False
             
             print(f"\n🔧 Iteration {iteration} params: radius={radius}, nBits={nBits}")
+            
+            # Compute dataset collision statistics for current fingerprint configuration
+            bit_to_frag_counts, bit_active_counts, total_frags = self._compute_bit_fragment_stats(
+                smiles_list=smiles, radius=radius, nBits=nBits, useFeatures=useFeatures, useChirality=useChirality
+            )
+            collision_stats = self._compute_collision_metrics(bit_to_frag_counts, bit_active_counts, total_frags, nBits)
             
             # Featurize
             X = self.featurize(smiles, radius, nBits, useFeatures, useChirality)
@@ -762,6 +788,8 @@ class DynamicParameterMovieCreator:
                         continue
                     # restrict to active bits
                     feat_w = {int(j): float(signed_imps_full[j]) for j in active_idx if abs(signed_imps_full[j]) > 0}
+                    # Apply collision-adjusted attribution (D)
+                    feat_w = self._apply_collision_adjusted_attributions(feat_w, collision_stats['per_bit_fragment_counts'])
                     atom_w = self.map_fragment_weights_to_atoms(m_i, feat_w, radius=radius, nBits=nBits, useFeatures=useFeatures, useChirality=useChirality)
                     def _proba_fn_local(smiles_s: str):
                         try:
@@ -786,6 +814,8 @@ class DynamicParameterMovieCreator:
             active_imps = [(idx, signed_imps[idx]) for idx in active_indices]
             active_imps.sort(key=lambda t: abs(t[1]), reverse=True)
             feature_weights = {idx: float(w) for idx, w in active_imps[:top_k] if abs(w) > 0}
+            # Apply collision-adjusted attribution (D)
+            feature_weights = self._apply_collision_adjusted_attributions(feature_weights, collision_stats['per_bit_fragment_counts'])
             
             # Map to atom weights
             atom_weights = {}
@@ -806,7 +836,7 @@ class DynamicParameterMovieCreator:
             self.quality_evolution['circular_fingerprint'].append(quality_score)
             # performance_evolution already updated above
 
-            # Advanced quality metrics (S, M, C, F)
+            # Advanced quality metrics (S, M, C, F) plus collision stats to be drawn
             def _circ_proba_fn(smiles_s: str):
                 try:
                     Xs = self.featurize([smiles_s], radius, nBits, useFeatures, useChirality)
@@ -814,6 +844,11 @@ class DynamicParameterMovieCreator:
                 except Exception:
                     return 0.0
             advanced_metrics = self._compute_advanced_quality(atom_weights, mol, proba_fn=_circ_proba_fn)
+            # Attach collision metrics for this iteration to display later
+            advanced_metrics = advanced_metrics or {}
+            advanced_metrics['COLLISION_RATE'] = collision_stats.get('collision_rate_mean', 0.0)
+            advanced_metrics['AVG_FRAGMENTS_PER_ACTIVE_BIT'] = collision_stats.get('avg_frags_per_active_bit', 0.0)
+            advanced_metrics['BIT_ENTROPY'] = collision_stats.get('bit_entropy_mean', 0.0)
             
             # Draw frame
             title = f"Dynamic Parameter Optimization - Circular Fingerprint"
@@ -1673,3 +1708,87 @@ class DynamicParameterMovieCreator:
             w = {k: (weights.get(k, 0.0) / total) if total > 0 else (1.0 / len(active_keys)) for k in active_keys}
         Q = float(sum(w[k] * available[k] for k in active_keys))
         return {"Q": Q, **available}
+
+    # --- New: Bit-fragment statistics and collision-adjusted attribution ---
+    def _compute_bit_fragment_stats(self, smiles_list, radius=2, nBits=2048, useFeatures=False, useChirality=False):
+        """Compute dataset-level bit-fragment statistics for Morgan fingerprints.
+        Returns dicts:
+          - bit_to_frag_counts: {bit: Counter({frag_key: count, ...}), ...}
+          - bit_active_counts: {bit: total times bit is active across molecules}
+          - total_fragments: total number of (bit, fragment) occurrences across dataset
+        A fragment key is a tuple (center_atom_idx, rad) from RDKit bitInfo.
+        """
+        bit_to_frag_counts: dict[int, Counter] = {}
+        bit_active_counts = Counter()
+        total_fragments = 0
+        for smi in smiles_list:
+            mol = Chem.MolFromSmiles(smi)
+            if mol is None:
+                continue
+            bit_info = {}
+            try:
+                _ = AllChem.GetMorganFingerprintAsBitVect(
+                    mol, radius=radius, nBits=nBits, bitInfo=bit_info,
+                    useChirality=useChirality, useFeatures=useFeatures
+                )
+            except Exception:
+                continue
+            # Count active bits for this molecule
+            for b, info_list in bit_info.items():
+                if not info_list:
+                    continue
+                bit_active_counts[b] += 1
+                if b not in bit_to_frag_counts:
+                    bit_to_frag_counts[b] = Counter()
+                # Each occurrence is (atom_idx, rad)
+                for center_idx, rad in info_list:
+                    bit_to_frag_counts[b][(int(center_idx), int(rad))] += 1
+                    total_fragments += 1
+        return bit_to_frag_counts, bit_active_counts, int(total_fragments)
+
+    def _compute_collision_metrics(self, bit_to_frag_counts, bit_active_counts, total_fragments, nBits):
+        """Compute A, B, C metrics (Collision Rate per Bit, Avg Fragments per Active Bit, Bit Entropy).
+        Returns dict with dataset aggregates: { 'collision_rate_mean': .., 'avg_frags_per_active_bit': .., 'bit_entropy_mean': .. }
+        Also returns per-bit helpers used for adjusted attributions: per_bit_fragment_counts {bit: total_frags_mapping}.
+        """
+        # Per-bit collision rate = (#fragments hashed to bit) / total_fragments
+        per_bit_total_frags = {b: sum(cnt.values()) for b, cnt in bit_to_frag_counts.items()}
+        collision_rates = []
+        bit_entropies = []
+        frags_per_active_bit = []
+        for b in range(nBits):
+            total_b = per_bit_total_frags.get(b, 0)
+            active_b = bit_active_counts.get(b, 0)
+            if total_fragments > 0:
+                collision_rates.append(total_b / float(total_fragments))
+            # Average fragments per active bit (only count bits that were active at least once)
+            if active_b > 0:
+                frags_per_active_bit.append(total_b / float(active_b))
+                # Entropy over fragment distribution for this bit
+                cnt = bit_to_frag_counts.get(b, None)
+                if cnt and total_b > 0:
+                    probs = np.array(list(cnt.values()), dtype=float) / float(total_b)
+                    # Use natural log; add small epsilon to avoid log(0) though probs>0
+                    H = float(-np.sum(probs * np.log(probs + 1e-12)))
+                else:
+                    H = 0.0
+                bit_entropies.append(H)
+        # Aggregates
+        agg = {
+            'collision_rate_mean': float(np.mean(collision_rates)) if collision_rates else 0.0,
+            'avg_frags_per_active_bit': float(np.mean(frags_per_active_bit)) if frags_per_active_bit else 0.0,
+            'bit_entropy_mean': float(np.mean(bit_entropies)) if bit_entropies else 0.0,
+            'per_bit_fragment_counts': per_bit_total_frags
+        }
+        return agg
+
+    def _apply_collision_adjusted_attributions(self, feature_weights: dict, per_bit_fragment_counts: dict):
+        """Implement D. Collision-Adjusted Attribution Score.
+        feature_weights is {bit_idx: attribution(b)}. We scale each attribution by 1 / (#fragments mapping to b).
+        Returns a new dict with adjusted attributions.
+        """
+        adjusted = {}
+        for b, w in (feature_weights or {}).items():
+            denom = float(per_bit_fragment_counts.get(int(b), 1) or 1)
+            adjusted[int(b)] = float(w) / denom
+        return adjusted
