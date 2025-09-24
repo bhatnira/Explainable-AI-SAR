@@ -135,26 +135,27 @@ class DynamicParameterMovieCreator:
         self.target_smiles = None
         self.sampled_df = None
         
-        # Define parameter exploration spaces
+        # Define parameter exploration spaces (uniform schedules across iterations)
+        # Each spec supports types: 'int_range', 'float_range', 'log_range', 'log2_range', 'choices'
         self.parameter_spaces = {
             'circular_fingerprint': {
-                'radius': [1, 2, 3, 4, 2, 3],
-                'nBits': [1024, 2048, 4096, 2048, 1024, 2048]
+                'radius': {'type': 'int_range', 'min': 1, 'max': 5},
+                'nBits': {'type': 'log2_range', 'min': 512, 'max': 8192},
+                'useFeatures': {'type': 'choices', 'choices': [False, True]},
+                'useChirality': {'type': 'choices', 'choices': [False, True]},
             },
-            # --- New: GraphConv parameter space ---
             'graphconv': {
-                'hidden_dim': [32, 64, 128, 96],
-                'num_layers': [2, 3, 4, 3],
-                'dropout': [0.1, 0.2, 0.3, 0.25],
-                'learning_rate': [1e-3, 5e-4, 1e-3, 7e-4]
+                'hidden_dim': {'type': 'int_range', 'min': 32, 'max': 256},
+                'num_layers': {'type': 'int_range', 'min': 2, 'max': 6},
+                'dropout': {'type': 'float_range', 'min': 0.0, 'max': 0.5},
+                'learning_rate': {'type': 'log_range', 'min': 1e-4, 'max': 5e-3},
             },
-            # --- New: ChemBERTa parameter space ---
             'chemberta': {
-                'learning_rate': [2e-5, 1e-5, 3e-5, 2e-5],
-                'num_train_epochs': [1, 1, 2, 2],
-                'max_seq_length': [128, 256, 512, 256],
-                'attention_layer': [-1, -2, -1, -3],
-                'attention_head': [0, 3, 5, 0]
+                'learning_rate': {'type': 'log_range', 'min': 5e-6, 'max': 5e-5},
+                'num_train_epochs': {'type': 'int_range', 'min': 1, 'max': 3},
+                'max_seq_length': {'type': 'choices', 'choices': [64, 128, 256, 512]},
+                'attention_layer': {'type': 'choices', 'choices': [-1, -2, -3, -4, -5, -6]},
+                'attention_head': {'type': 'int_range', 'min': 0, 'max': 11},
             }
         }
         
@@ -168,9 +169,9 @@ class DynamicParameterMovieCreator:
         # Runtime knobs via env vars to control memory/time
         self.use_tpot = os.getenv('USE_TPOT', '0') == '1'
         try:
-            self.max_iters = int(os.getenv('MAX_ITERS', '4'))
+            self.max_iters = int(os.getenv('MAX_ITERS', '24'))
         except Exception:
-            self.max_iters = 4
+            self.max_iters = 24
         try:
             self.n_per_class_env = int(os.getenv('N_PER_CLASS', '50'))
         except Exception:
@@ -633,10 +634,45 @@ class DynamicParameterMovieCreator:
 
     # ------------------------ Circular FP movie ------------------------
     def get_parameters_for_iteration(self, model_name, iteration):
+        """Return parameter dict for a given model and iteration using uniform schedules."""
         params = {}
         space = self.parameter_spaces.get(model_name, {})
-        for k, v in space.items():
-            params[k] = v[iteration % len(v)]
+        # Avoid div-by-zero; when only 1 iter, always pick min/first
+        N = max(1, int(self.max_iters))
+        frac = 0.0 if N <= 1 else (iteration % N) / float(N - 1)
+        for name, spec in space.items():
+            if isinstance(spec, dict):
+                typ = spec.get('type', 'choices')
+                if typ == 'int_range':
+                    a, b = int(spec['min']), int(spec['max'])
+                    val = int(round(a + frac * (b - a)))
+                elif typ == 'float_range':
+                    a, b = float(spec['min']), float(spec['max'])
+                    val = float(a + frac * (b - a))
+                elif typ == 'log_range':
+                    import numpy as _np
+                    a, b = float(spec['min']), float(spec['max'])
+                    la, lb = _np.log10(a), _np.log10(b)
+                    val = float(10 ** (la + frac * (lb - la)))
+                elif typ == 'log2_range':
+                    import numpy as _np
+                    a, b = int(spec['min']), int(spec['max'])
+                    la, lb = _np.log2(a), _np.log2(b)
+                    val = int(2 ** round(la + frac * (lb - la)))
+                elif typ == 'choices':
+                    choices = list(spec.get('choices', []))
+                    if choices:
+                        idx = iteration % len(choices)
+                        val = choices[idx]
+                    else:
+                        val = None
+                else:
+                    val = None
+            else:
+                # Backward compatibility if spec is a list
+                lst = list(spec) if isinstance(spec, (list, tuple)) else []
+                val = lst[iteration % len(lst)] if lst else None
+            params[name] = val
         return params
 
     def _train_sklearn_fallback(self, X_train, y_train):
@@ -663,10 +699,6 @@ class DynamicParameterMovieCreator:
         smiles = df['cleanedMol'].values
         labels = df['classLabel'].values
         
-        # Precompute dataset-level bit-fragment stats for circular fingerprints (based on first iteration params)
-        # These are reused across iterations to keep comparisons fair per nBits/radius choice per iteration
-        # We'll recompute inside the loop per current params to reflect collision behavior for that config.
-        
         # Prepare target molecule (first from test split in first iteration)
         target_mol = None
         
@@ -678,11 +710,10 @@ class DynamicParameterMovieCreator:
             params = self.get_parameters_for_iteration(model_name, iteration)
             radius = int(params['radius'])
             nBits = int(params['nBits'])
-            # Fixed settings per your request
-            useFeatures = False
-            useChirality = False
+            useFeatures = bool(params.get('useFeatures', False))
+            useChirality = bool(params.get('useChirality', False))
             
-            print(f"\n🔧 Iteration {iteration} params: radius={radius}, nBits={nBits}")
+            print(f"\n🔧 Iteration {iteration} params: radius={radius}, nBits={nBits}, useFeatures={useFeatures}, useChirality={useChirality}")
             
             # Compute dataset collision statistics for current fingerprint configuration
             bit_to_frag_counts, bit_active_counts, total_frags = self._compute_bit_fragment_stats(
