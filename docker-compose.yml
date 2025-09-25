@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  circular-fingerprint-tpot:
+    build: .
+    container_name: circular-fingerprint-tpot
+    volumes:
+      - ./data:/workspace/data:ro
+      - ./results:/workspace/results
+      - ./visualizations:/workspace/visualizations
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+    command: python models/train_tpot_simple.py
+    
+  # Service for running interpretations
+  interpret:
+    build: .
+    container_name: circular-fingerprint-interpret
+    volumes:
+      - ./data:/workspace/data:ro
+      - ./results:/workspace/results
+      - ./visualizations:/workspace/visualizations
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+    command: python models/interpret_tpot.py
+    depends_on:
+      - circular-fingerprint-tpot
+    
+  # Service for parameter optimization
+  optimize:
+    build: .
+    container_name: circular-fingerprint-optimize
+    volumes:
+      - ./data:/workspace/data:ro
+      - ./results:/workspace/results
+      - ./visualizations:/workspace/visualizations
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+    command: python models/agentic_parameter_optimizer.py
+    
+  # Service for generating GIFs
+  visualize:
+    build: .
+    container_name: circular-fingerprint-visualize
+    volumes:
+      - ./data:/workspace/data:ro
+      - ./results:/workspace/results:ro
+      - ./visualization:/workspace/visualization
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+    command: python visualization/generate_gifs.py
+    depends_on:
+      - optimize

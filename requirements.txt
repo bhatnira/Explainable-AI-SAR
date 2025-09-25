@@ -1,0 +1,22 @@
+# Core dependencies for Circular Fingerprint AutoML TPOT Explainability
+numpy==1.23.5
+pandas==2.0.*
+scikit-learn==1.1.*
+matplotlib==3.7.*
+pillow
+openpyxl
+
+# TPOT and AutoML
+tpot==0.12.1
+xgboost==1.7.*
+
+# Explainability
+lime==0.2.*
+
+# Chemical informatics
+deepchem==2.7.1
+rdkit-pypi==2022.9.5
+
+# Additional utilities
+seaborn==0.12.*
+joblib==1.2.*

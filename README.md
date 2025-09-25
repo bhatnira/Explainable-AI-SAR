@@ -20,22 +20,45 @@ A comprehensive toolkit for training and interpreting molecular classification m
 
 ## 🚀 Quick Start
 
-### 1. Environment Setup
-```bash
-# Activate the virtual environment
-source chemberta_env/bin/activate
+### Option 1: Docker (Recommended)
 
-# Install required packages (already configured)
-# - tpot, rdkit-pypi, deepchem, matplotlib, pandas, numpy
+The easiest way to run the project is using Docker:
+
+```bash
+# Build and run the complete pipeline
+./run_docker.sh all
+
+# Or run individual components
+./run_docker.sh train      # Train TPOT model
+./run_docker.sh interpret  # Generate interpretations
+./run_docker.sh optimize   # Parameter optimization
+./run_docker.sh visualize  # Create GIF visualizations
+
+# Interactive development
+./run_docker.sh interactive
 ```
 
-### 2. Train Model
+### Option 2: Local Environment
+
+#### 1. Environment Setup
+```bash
+# Create and activate virtual environment
+python -m venv circular-fp-env
+source circular-fp-env/bin/activate  # Linux/Mac
+# or
+circular-fp-env\Scripts\activate     # Windows
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+#### 2. Train Model
 ```bash
 # Train TPOT AutoML pipeline
 python models/train_tpot_simple.py
 ```
 
-### 3. Generate Interpretations
+#### 3. Generate Interpretations
 ```bash
 # Generate TPOT feature importance visualizations
 python models/interpret_tpot.py
