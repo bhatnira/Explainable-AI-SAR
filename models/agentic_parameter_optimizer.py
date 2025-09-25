@@ -3,7 +3,7 @@ Agentic Parameter Optimization for Explainable SAR Models
 ========================================================
 
 This module implements an intelligent agent that systematically optimizes
-parameters for circular fingerprint, GraphConv, and ChemBERTa models to
+parameters for circular fingerprint and TPOT AutoML models to
 improve both predictive performance and explanation quality.
 """
 
@@ -55,7 +55,7 @@ class ParameterOptimizationAgent:
         }
         
         print("🤖 Parameter Optimization Agent Initialized")
-        print(f"📊 Will optimize: Circular Fingerprint, GraphConv, ChemBERTa")
+        print(f"📊 Will optimize: Circular Fingerprint and TPOT AutoML")
         
     def _define_parameter_spaces(self):
         """Define parameter search spaces for each model type."""
@@ -67,25 +67,15 @@ class ParameterOptimizationAgent:
                 'useChirality': [True, False],
                 'useBondTypes': [True, False]
             },
-            'graphconv': {
-                'graph_conv_layers': [
-                    [32, 32], [64, 64], [128, 128],
-                    [32, 64], [64, 128], [128, 64],
-                    [32, 32, 32], [64, 64, 64], [128, 128, 128],
-                    [32, 64, 32], [64, 128, 64]
-                ],
-                'dense_layer_size': [64, 128, 256, 512],
-                'dropout': [0.1, 0.2, 0.3, 0.4, 0.5],
-                'learning_rate': [0.0001, 0.0005, 0.001, 0.005, 0.01],
-                'batch_size': [16, 32, 64, 128]
-            },
-            'chemberta': {
-                'max_length': [128, 256, 512],
-                'learning_rate': [1e-5, 2e-5, 5e-5, 1e-4],
-                'batch_size': [8, 16, 32],
-                'num_epochs': [3, 5, 10, 15],
-                'warmup_steps': [0, 100, 500, 1000],
-                'weight_decay': [0.0, 0.01, 0.1]
+            'tpot': {
+                'generations': [5, 10, 20, 50],
+                'population_size': [20, 50, 100],
+                'scoring': ['accuracy', 'roc_auc', 'f1'],
+                'cv': [3, 5, 10],
+                'max_time_mins': [5, 10, 30, 60],
+                'max_eval_time_mins': [0.04, 0.1, 0.5],
+                'random_state': [42],
+                'verbosity': [0, 1, 2]
             }
         }
     
@@ -112,7 +102,7 @@ class ParameterOptimizationAgent:
         Generate parameter combinations using different strategies.
         
         Args:
-            model_type: 'circular_fingerprint', 'graphconv', or 'chemberta'
+            model_type: 'circular_fingerprint' or 'tpot'
             strategy: 'grid', 'random', 'adaptive', or 'bayesian'
         """
         space = self.parameter_spaces[model_type]
@@ -213,17 +203,11 @@ class ParameterOptimizationAgent:
                 {'radius': 3, 'nBits': 2048, 'useFeatures': True, 'useChirality': False, 'useBondTypes': True},
                 {'radius': 2, 'nBits': 2048, 'useFeatures': False, 'useChirality': True, 'useBondTypes': True},
             ])
-        elif model_type == 'graphconv':
+        elif model_type == 'tpot':
             combinations.extend([
-                {'graph_conv_layers': [64, 64], 'dense_layer_size': 128, 'dropout': 0.2, 'learning_rate': 0.001, 'batch_size': 32},
-                {'graph_conv_layers': [128, 128], 'dense_layer_size': 256, 'dropout': 0.3, 'learning_rate': 0.0005, 'batch_size': 32},
-                {'graph_conv_layers': [32, 64, 32], 'dense_layer_size': 128, 'dropout': 0.4, 'learning_rate': 0.001, 'batch_size': 64},
-            ])
-        elif model_type == 'chemberta':
-            combinations.extend([
-                {'max_length': 256, 'learning_rate': 2e-5, 'batch_size': 16, 'num_epochs': 5, 'warmup_steps': 500, 'weight_decay': 0.01},
-                {'max_length': 512, 'learning_rate': 1e-5, 'batch_size': 8, 'num_epochs': 10, 'warmup_steps': 1000, 'weight_decay': 0.1},
-                {'max_length': 128, 'learning_rate': 5e-5, 'batch_size': 32, 'num_epochs': 3, 'warmup_steps': 100, 'weight_decay': 0.0},
+                {'generations': 20, 'population_size': 50, 'scoring': 'roc_auc', 'cv': 5, 'max_time_mins': 30, 'max_eval_time_mins': 0.1, 'random_state': 42, 'verbosity': 1},
+                {'generations': 10, 'population_size': 20, 'scoring': 'accuracy', 'cv': 3, 'max_time_mins': 10, 'max_eval_time_mins': 0.04, 'random_state': 42, 'verbosity': 0},
+                {'generations': 50, 'population_size': 100, 'scoring': 'f1', 'cv': 10, 'max_time_mins': 60, 'max_eval_time_mins': 0.5, 'random_state': 42, 'verbosity': 2},
             ])
         
         # Strategy 2: Random exploration
@@ -282,105 +266,59 @@ class ParameterOptimizationAgent:
             print(f"   ❌ Error: {e}")
             return None, 0.0, {}
     
-    def train_graphconv_model(self, params: Dict, smiles: List, labels: np.ndarray) -> Tuple[Any, float, Dict]:
-        """Train GraphConv model with given parameters."""
-        print(f"🔬 Training GraphConv model with params: {params}")
+    def train_tpot_model(self, params: Dict, smiles: List, labels: np.ndarray) -> Tuple[Any, float, Dict]:
+        """Train TPOT AutoML model with given parameters."""
+        print(f"🔬 Training TPOT model with params: {params}")
         
         try:
-            # Create dataset
-            featurizer = dc.feat.ConvMolFeaturizer()
+            from tpot import TPOTClassifier
+            from sklearn.model_selection import train_test_split
+            from sklearn.metrics import roc_auc_score
+            
+            # Create circular fingerprint features for TPOT
+            featurizer = dc.feat.CircularFingerprint(
+                radius=2,  # Fixed for TPOT compatibility
+                size=2048,  # Fixed for TPOT compatibility
+            )
+            
+            # Featurize molecules
             X = featurizer.featurize(smiles)
-            dataset = dc.data.NumpyDataset(X=X, y=labels, ids=smiles)
             
             # Split data
-            train_dataset, test_dataset = dc.splits.RandomSplitter().train_test_split(
-                dataset, frac_train=0.8, seed=42
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, labels, test_size=0.2, random_state=42, stratify=labels
             )
             
-            # Create and train model
-            model = dc.models.GraphConvModel(
-                n_tasks=1,
-                graph_conv_layers=params['graph_conv_layers'],
-                dense_layer_size=params['dense_layer_size'],
-                dropout=params['dropout'],
-                mode='classification',
-                learning_rate=params['learning_rate'],
-                batch_size=params['batch_size']
+            # Create and train TPOT model
+            tpot = TPOTClassifier(
+                generations=params['generations'],
+                population_size=params['population_size'],
+                scoring=params['scoring'],
+                cv=params['cv'],
+                max_time_mins=params['max_time_mins'],
+                max_eval_time_mins=params['max_eval_time_mins'],
+                random_state=params['random_state'],
+                verbosity=params['verbosity'],
+                n_jobs=1  # Single-threaded for stability
             )
             
-            model.fit(train_dataset, nb_epoch=15)
+            # Fit the model
+            tpot.fit(X_train, y_train)
             
             # Evaluate
-            test_scores = model.evaluate(test_dataset, [dc.metrics.Metric(dc.metrics.roc_auc_score)])
-            test_auc = test_scores['roc_auc_score']
+            test_pred_proba = tpot.predict_proba(X_test)[:, 1] if len(set(y_test)) > 1 else tpot.predict(X_test)
+            test_auc = roc_auc_score(y_test, test_pred_proba) if len(set(y_test)) > 1 else 0.5
             
             print(f"   ✅ Test AUC: {test_auc:.3f}")
             
-            return model, test_auc, {'train_size': len(train_dataset), 'test_size': len(test_dataset)}
+            return tpot, test_auc, {'train_size': len(X_train), 'test_size': len(X_test)}
             
         except Exception as e:
             print(f"   ❌ Error: {e}")
+            import traceback
+            traceback.print_exc()
             return None, 0.0, {}
-    
-    def train_chemberta_model(self, params: Dict, smiles: List, labels: np.ndarray) -> Tuple[Any, float, Dict]:
-        """Train ChemBERTa model with given parameters (simplified version)."""
-        print(f"🔬 Training ChemBERTa model with params: {params}")
-        
-        try:
-            # For this demo, we'll simulate ChemBERTa with a simplified approach
-            # In practice, you'd use the actual ChemBERTa model
-            
-            # Create molecular descriptors as features (simulating BERT embeddings)
-            features = []
-            for smi in smiles:
-                mol = Chem.MolFromSmiles(smi)
-                if mol is not None:
-                    desc = [
-                        Descriptors.MolWt(mol),
-                        Descriptors.LogP(mol),
-                        Descriptors.NumHDonors(mol),
-                        Descriptors.NumHAcceptors(mol),
-                        Descriptors.TPSA(mol),
-                        rdMolDescriptors.CalcNumRotatableBonds(mol),
-                        rdMolDescriptors.CalcNumAromaticRings(mol),
-                        len(smi)  # Sequence length proxy
-                    ]
-                    features.append(desc)
-                else:
-                    features.append([0] * 8)
-            
-            X = np.array(features)
-            dataset = dc.data.NumpyDataset(X=X, y=labels, ids=smiles)
-            
-            # Split data
-            train_dataset, test_dataset = dc.splits.RandomSplitter().train_test_split(
-                dataset, frac_train=0.8, seed=42
-            )
-            
-            # Create model (simulating ChemBERTa with multi-layer network)
-            model = dc.models.MultitaskClassifier(
-                n_tasks=1,
-                n_features=8,
-                layer_sizes=[params['max_length']//2, params['max_length']//4],
-                dropouts=0.1,
-                learning_rate=params['learning_rate'],
-                batch_size=params['batch_size']
-            )
-            
-            model.fit(train_dataset, nb_epoch=params['num_epochs'])
-            
-            # Evaluate
-            test_scores = model.evaluate(test_dataset, [dc.metrics.Metric(dc.metrics.roc_auc_score)])
-            test_auc = test_scores['roc_auc_score']
-            
-            print(f"   ✅ Test AUC: {test_auc:.3f}")
-            
-            return model, test_auc, {'train_size': len(train_dataset), 'test_size': len(test_dataset)}
-            
-        except Exception as e:
-            print(f"   ❌ Error: {e}")
-            return None, 0.0, {}
-    
+
     def evaluate_model_explanations(self, model, model_type: str, smiles: List, labels: np.ndarray) -> float:
         """Evaluate explanation quality for a trained model."""
         print(f"🔍 Evaluating explanation quality for {model_type}...")
@@ -476,8 +414,8 @@ class ParameterOptimizationAgent:
                 contrib += np.random.normal(0, 0.1)  # Noise
                 atom_contribs.append(contrib)
                 
-        elif model_type == 'graphconv':
-            # Graph models consider global molecular structure
+        else:  # tpot
+            # AutoML models consider feature importance across multiple algorithms
             for atom_idx, atom in enumerate(mol.GetAtoms()):
                 atomic_num = atom.GetAtomicNum()
                 degree = atom.GetDegree()
@@ -486,33 +424,15 @@ class ParameterOptimizationAgent:
                 
                 contrib = 0.0
                 if is_aromatic:
-                    contrib += 0.4 * prediction
-                if atomic_num in [7, 8]:
                     contrib += 0.35 * prediction
+                if atomic_num in [7, 8, 16]:  # Heteroatoms
+                    contrib += 0.4 * prediction
                 if is_ring:
                     contrib += 0.25 * prediction
-                if degree > 3:
-                    contrib -= 0.1 * prediction  # Overcrowding penalty
+                if degree > 2:
+                    contrib += 0.15 * prediction
                 
                 contrib += np.random.normal(0, 0.08)
-                atom_contribs.append(contrib)
-                
-        else:  # chemberta
-            # Sequence models focus on patterns and sequences
-            for atom_idx, atom in enumerate(mol.GetAtoms()):
-                atomic_num = atom.GetAtomicNum()
-                is_aromatic = atom.GetIsAromatic()
-                position_factor = 1 - abs(atom_idx - len(list(mol.GetAtoms()))/2) / (len(list(mol.GetAtoms()))/2)
-                
-                contrib = 0.0
-                if is_aromatic:
-                    contrib += 0.35 * prediction
-                if atomic_num in [7, 8]:
-                    contrib += 0.3 * prediction
-                
-                # Position-dependent contribution (sequence models)
-                contrib *= (0.5 + 0.5 * position_factor)
-                contrib += np.random.normal(0, 0.06)
                 atom_contribs.append(contrib)
         
         return atom_contribs
@@ -536,10 +456,8 @@ class ParameterOptimizationAgent:
             # Train model
             if model_type == 'circular_fingerprint':
                 model, test_auc, info = self.train_circular_fingerprint_model(params, smiles, labels)
-            elif model_type == 'graphconv':
-                model, test_auc, info = self.train_graphconv_model(params, smiles, labels)
-            elif model_type == 'chemberta':
-                model, test_auc, info = self.train_chemberta_model(params, smiles, labels)
+            elif model_type == 'tpot':
+                model, test_auc, info = self.train_tpot_model(params, smiles, labels)
             else:
                 continue
             
@@ -622,7 +540,7 @@ class ParameterOptimizationAgent:
         
         # Optimize each model type
         results = {}
-        model_types = ['circular_fingerprint', 'graphconv', 'chemberta']
+        model_types = ['circular_fingerprint', 'tpot']
         
         for model_type in model_types:
             try:

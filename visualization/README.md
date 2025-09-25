@@ -2,7 +2,7 @@
 ================================
 
 ## 📁 Contents
-This folder contains simplified single-molecule evolution movies showing how molecular explanations improve through agentic parameter optimization.
+This folder contains simplified single-molecule evolution movies showing how molecular explanations improve through agentic parameter optimization for circular fingerprints.
 
 ## Generated Movies
 
@@ -13,14 +13,6 @@ These movies demonstrate the **original problem** where parameters don't change:
    - Shows parameters that remain static across iterations
    - Demonstrates the issue user identified: "parameters remain the same, unchanged"
 
-2. **chemberta_parameters_evolution.gif**  
-   - Shows static parameters with no real optimization
-   - Original agentic system issue
-
-3. **graphconv_parameters_evolution.gif**
-   - Shows unchanging parameters across iterations
-   - Demonstrates lack of true parameter exploration
-
 ### Dynamic Parameter Movies (SOLUTION)
 These movies show **ACTUAL** parameter changes across iterations:
 
@@ -29,23 +21,13 @@ These movies show **ACTUAL** parameter changes across iterations:
    - Shows nBits evolution: 1024→2048→4096
    - Demonstrates true agentic parameter exploration
 
-2. **chemberta_dynamic_parameters.gif**  
-   - Shows max_length changes: 128→256→512
-   - Shows learning_rate variations: 2e-5→1e-5→3e-5
-   - Parameter change highlighting in red
-
-3. **graphconv_dynamic_parameters.gif**
-   - Shows hidden_dim evolution: 32→64→128→96→64→80
-   - Shows num_layers changes: 2→3→4→3
-   - Real parameter optimization trajectory
-
 ### Comparison
 - **Static movies**: Show the original issue where parameters don't change
 - **Dynamic movies**: Show the solution with actual parameter variation
 - **Educational value**: Compare both to understand the difference between static and dynamic optimization
 
 #### 📊 **Static Parameter Movies (Original Issue):**
-4. **circular_fingerprint_parameters_evolution.gif**
+2. **circular_fingerprint_parameters_evolution.gif**
    - Shows the original issue: same parameters all iterations
    - Demonstrates why dynamic exploration was needed
 
@@ -90,11 +72,9 @@ These movies show **ACTUAL** parameter changes across iterations:
 ### 🏆 Model Comparison Results:
 | Model | Quality Range | Best Feature |
 |-------|---------------|--------------|
-| ChemBERTa | 0.595 → 0.841 | Dramatic improvement, best explanations |
-| GraphConv | 0.300 → 0.700 | Graph-aware molecular understanding |
-| Circular FP | ~0.508 stable | Consistent traditional approach |
+| Circular FP | ~0.508 stable | Consistent fragment-based approach |
 
-### � Parameter Information Displayed:
+### 🔧 Parameter Information Displayed:
 
 **Circular Fingerprint Parameters:**
 - `radius`: Atom environment size (affects neighborhood scope)
@@ -102,21 +82,9 @@ These movies show **ACTUAL** parameter changes across iterations:
 - `useFeatures`: Include atom feature information
 - `useChirality`: Include stereochemistry information
 
-**ChemBERTa Parameters:**
-- `max_length`: Maximum sequence length (affects context)
-- `learning_rate`: Training optimization speed
-- `batch_size`: Samples processed per training batch
-- `num_epochs`: Number of complete training passes
-
-**GraphConv Parameters:**
-- `hidden_dim`: Node feature dimensionality (grows 64→144)
-- `num_layers`: Graph message passing depth (2→5 layers)
-- `dropout`: Regularization rate (0.1→0.4)
-- `learning_rate`: Gradient descent step size (0.01→0.001)
-
 ### 💡 Usage:
 These enhanced movies demonstrate how the agentic parameter optimization framework:
-1. **Intelligently explores** parameter spaces for each model type
+1. **Intelligently explores** parameter spaces for circular fingerprint models
 2. **Balances performance and explainability** through parameter tuning
 3. **Shows parameter impact** on molecular explanation quality
 4. **Identifies optimal configurations** for explainable predictions

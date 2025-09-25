@@ -1,6 +1,6 @@
 # Advanced Explanation Quality Metrics for Molecular Models
 
-Machine learning models for molecular property prediction (e.g., GNNs, fingerprints, or SMILES-based transformers) require explainability to gain trust. Baseline explanations can be evaluated by coverage (fraction of atoms with nonzero importance) and normalized magnitude (mean(|w|/max|w|)), but these are coarse. We propose a richer per-instance metric comprising multiple sub-scores (all in [0, 1]) to reward concise, coherent, stable, and directionally faithful attributions. Each sub-metric is defined formally below, with formulas and computation steps. We also give model-specific guidance for computing attributions (atom importances) and perturbations in Circular Fingerprint, GraphConv, and ChemBERTa models.
+Machine learning models for molecular property prediction (e.g., GNNs, fingerprints, or SMILES-based transformers) require explainability to gain trust. Baseline explanations can be evaluated by coverage (fraction of atoms with nonzero importance) and normalized magnitude (mean(|w|/max|w|)), but these are coarse. We propose a richer per-instance metric comprising multiple sub-scores (all in [0, 1]) to reward concise, coherent, stable, and directionally faithful attributions. Each sub-metric is defined formally below, with formulas and computation steps. We also give model-specific guidance for computing attributions (atom importances) and perturbations in Circular Fingerprint and TPOT models.
 
 ---
 
@@ -95,7 +95,7 @@ def compute_stability_score(molecule, explain_func, perturb_fn, M=10):
     return 1.0 - D_max
 ```
 
-Model-specific perturbations: GraphConv – add small Gaussian noise to node features or drop a non-critical edge; ChemBERTa – alternative SMILES enumerations; Fingerprint – flip non-informative bits. Ensure label/output change is small while probing explanation stability.
+Model-specific perturbations: Fingerprint – flip non-informative bits or modify radius parameters; TPOT – use feature ablation or add noise to less important features. Ensure label/output change is small while probing explanation stability.
 
 ---
 
@@ -155,13 +155,9 @@ Equal weights (all 0.25) are a reasonable default. Report each sub-score alongsi
   - Attribution: permutation importance of active bits. Map bits → atoms via RDKit bitInfo; distribute bit contributions to atoms.
   - Perturbations: random bit flips/shuffles; or remove mapped atoms and recompute.
 
-- GraphConv (GNN) Model:
-  - Attribution: per-atom fragment probability minus whole-molecule probability (w_i = P(frag_i) − P(whole)) or node masking.
-  - Perturbations: remove/mask random non-critical atoms/edges; small feature noise.
-
-- ChemBERTa (Transformer on SMILES):
-  - Attribution: [CLS] → token attention (or IG on embeddings); map tokens → atoms; aggregate per atom.
-  - Perturbations: alternative SMILES enumerations; mask uninformative tokens.
+- TPOT AutoML Model:
+  - Attribution: feature importance from final optimized pipeline, mapped back to atoms via fingerprint bit information.
+  - Perturbations: feature ablation or noise addition to less important features.
 
 Implementation tips:
 - Use the same trained model for perturbation evaluations (no retraining).

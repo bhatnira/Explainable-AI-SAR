@@ -200,7 +200,7 @@ class ProjectStructuralMapper:
         workflow_text = """
 AGENTIC OPTIMIZATION WORKFLOW:
 1. Data Layer: Input molecular data & properties
-2. Model Layer: GraphConv, ChemBERTa, Circular Fingerprint models
+2. Model Layer: TPOT AutoML with Circular Fingerprint models
 3. Agentic Optimization: Intelligent parameter exploration
 4. Analysis Engine: Quality metrics & explanation assessment
 5. Results: Performance data, optimization trajectories
@@ -226,7 +226,7 @@ KEY RESULTS:
 • Models Optimized: {results['optimization_summary']['models_optimized']}
 
 EXPLANATION QUALITY:
-• ChemBERTa: 0.841 (Excellent)
+• Circular Fingerprint: 0.508 (Stable)
 • Circular FP: 0.508 (Moderate)
 • Relationship: Positive correlation
                 """

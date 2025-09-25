@@ -1,8 +1,0 @@
-{
-  "accuracy": 0.6,
-  "roc_auc": 0.5900000000000001,
-  "training_time": 2.8340229988098145,
-  "train_samples": 80,
-  "test_samples": 20,
-  "total_time": 10.51512885093689
-}

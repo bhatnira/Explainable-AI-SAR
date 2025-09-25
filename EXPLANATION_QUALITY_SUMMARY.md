@@ -23,8 +23,8 @@ You requested a system to **"develop metrics to determine quality of these expla
   - Chemical plausibility scoring
   - Comprehensive visualization capabilities
 
-#### 2. **`evaluate_explanation_quality.py`** - GraphConv Integration
-- **Purpose**: Direct integration with your existing GraphConv model
+#### 2. **`example_quality_evaluation.py`** - Generic Integration
+- **Purpose**: Works with any model type including TPOT and circular fingerprints
 - **Key Features**:
   - Loads your trained models automatically
   - Generates explanations for evaluation
@@ -100,7 +100,7 @@ python models/example_quality_evaluation.py
 ```bash
 python models/evaluate_explanation_quality.py
 ```
-- Assess your GraphConv model's explanation quality
+- Assess your TPOT model's explanation quality
 - Get specific recommendations for improvement
 - Generate detailed quality reports
 
@@ -201,7 +201,7 @@ results/
 ```python
 def train_optimized_model():
     # 1. Train base model
-    model = train_graphconv_model()
+    model = train_tpot_model()
     
     # 2. Evaluate explanation quality
     explanations = generate_explanations(model)
@@ -255,7 +255,7 @@ def select_best_model(candidates):
 ## 🚀 Next Steps
 
 1. **Immediate**: Run `example_quality_evaluation.py` to see the system in action
-2. **Short-term**: Evaluate your current GraphConv model with `evaluate_explanation_quality.py`
+2. **Short-term**: Evaluate your current TPOT model with `example_quality_evaluation.py`
 3. **Medium-term**: Use `optimize_for_explainability.py` to find the best model variant
 4. **Long-term**: Integrate quality metrics into your regular training pipeline
 

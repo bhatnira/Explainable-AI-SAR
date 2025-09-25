@@ -50,7 +50,7 @@ def create_correlation_analysis(df):
     plt.figure(figsize=(15, 12))
     
     # Set up the color palette
-    colors = {'circular_fingerprint': '#FF6B6B', 'chemberta': '#4ECDC4', 'graphconv': '#45B7D1'}
+    colors = {'circular_fingerprint': '#FF6B6B', 'tpot': '#4ECDC4'}
     
     # 1. Overall Scatter Plot with Regression Line
     plt.subplot(2, 3, 1)
@@ -251,7 +251,7 @@ def create_improvement_tracking_figure(df):
     """Create a detailed figure tracking improvement patterns"""
     plt.figure(figsize=(16, 10))
     
-    colors = {'circular_fingerprint': '#FF6B6B', 'chemberta': '#4ECDC4', 'graphconv': '#45B7D1'}
+    colors = {'circular_fingerprint': '#FF6B6B', 'tpot': '#4ECDC4'}
     
     # 1. Sequential Improvement Analysis
     plt.subplot(2, 3, 1)

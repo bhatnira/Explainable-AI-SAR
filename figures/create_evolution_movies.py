@@ -25,8 +25,7 @@ class MolecularExplanationMovieCreator:
     def __init__(self):
         self.colors = {
             'circular_fingerprint': '#FF6B6B',
-            'chemberta': '#4ECDC4', 
-            'graphconv': '#45B7D1'
+            'tpot': '#4ECDC4'
         }
         
         # Sample molecules for demonstration
