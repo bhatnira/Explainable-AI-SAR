@@ -139,8 +139,8 @@ class DynamicParameterMovieCreator:
         # Each spec supports types: 'int_range', 'float_range', 'log_range', 'log2_range', 'choices'
         self.parameter_spaces = {
             'circular_fingerprint': {
-                'radius': {'type': 'int_range', 'min': 1, 'max': 5},
-                'nBits': {'type': 'log2_range', 'min': 512, 'max': 8192},
+                'radius': {'type': 'int_range', 'min': 1, 'max': 8},
+                'nBits': {'type': 'choices', 'choices': [256, 512, 1024, 2048, 4096, 8192, 16384, 32768]},
                 'useFeatures': {'type': 'choices', 'choices': [False, True]},
                 'useChirality': {'type': 'choices', 'choices': [False, True]},
             },
