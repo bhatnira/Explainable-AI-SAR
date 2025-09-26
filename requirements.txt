@@ -12,6 +12,7 @@ xgboost==1.7.*
 
 # Explainability
 lime==0.2.*
+shap>=0.45,<0.48
 
 # Chemical informatics
 deepchem==2.7.1

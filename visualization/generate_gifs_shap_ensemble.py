@@ -1,0 +1,19 @@
+#!/usr/bin/env python3
+from pathlib import Path
+import sys
+sys.path.append(str(Path('visualization').resolve()))
+from create_dynamic_parameter_movies_shap_ensemble import ShapLimeEnsembleMovieCreator
+
+if __name__ == "__main__":
+    m = ShapLimeEnsembleMovieCreator()
+    print("[1/1] Circular Fingerprint with LIME+SHAP ensemble...")
+    try:
+        p1 = m.create_dynamic_parameter_movie_shap_ensemble('circular_fingerprint')
+        print("✅ Saved:", p1)
+    except Exception as e:
+        print("❌ SHAP+LIME ensemble movie failed:", e)
+        import traceback
+        traceback.print_exc()
+
+    print("\n🎬 SHAP+LIME ensemble GIF generation complete!")
+    print("🔍 Check the visualization/ folder for the generated GIF.")

@@ -27,7 +27,8 @@ ENV MPLBACKEND=Agg \
 RUN python -m pip install --upgrade pip && \
     pip install --no-cache-dir \
       numpy==1.23.5 pandas==2.0.* scikit-learn==1.1.* matplotlib==3.7.* pillow openpyxl \
-      tpot==0.12.1 xgboost==1.7.* lime==0.2.* deepchem==2.7.1
+      tpot==0.12.1 xgboost==1.7.* lime==0.2.* deepchem==2.7.1 \
+      shap==0.46.*
 
 # Default: Train TPOT model and generate interpretations
 CMD ["python", "models/train_tpot_simple.py"]

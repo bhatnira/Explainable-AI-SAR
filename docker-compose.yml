@@ -41,7 +41,7 @@ services:
       - MPLBACKEND=Agg
     command: python models/agentic_parameter_optimizer.py
     
-  # Service for generating GIFs
+  # Service for generating GIFs (original LIME/mixed)
   visualize:
     build: .
     container_name: circular-fingerprint-visualize
@@ -53,5 +53,51 @@ services:
       - PYTHONUNBUFFERED=1
       - MPLBACKEND=Agg
     command: python visualization/generate_gifs.py
+    depends_on:
+      - optimize
+
+  # Service for generating SHAP-based GIFs (dataset SHAP, LIME highlighting)
+  visualize-shap:
+    build: .
+    container_name: circular-fingerprint-visualize-shap
+    volumes:
+      - ./data:/workspace/data:ro
+      - ./results:/workspace/results:ro
+      - ./visualization:/workspace/visualization
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+    command: python visualization/generate_gifs_shap.py
+    depends_on:
+      - optimize
+
+  # Service for generating SHAP-local highlighting GIF (pure SHAP local)
+  visualize-shap-local:
+    build: .
+    container_name: circular-fingerprint-visualize-shap-local
+    volumes:
+      - ./data:/workspace/data:ro
+      - ./results:/workspace/results:ro
+      - ./visualization:/workspace/visualization
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+    command: python visualization/generate_gifs_shap_local.py
+    depends_on:
+      - optimize
+
+  # Service for generating LIME+SHAP ensemble GIF
+  visualize-shap-ensemble:
+    build: .
+    container_name: circular-fingerprint-visualize-shap-ensemble
+    volumes:
+      - ./data:/workspace/data:ro
+      - ./results:/workspace/results:ro
+      - ./visualization:/workspace/visualization
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+      - ENSEMBLE_ALPHA=0.5
+    command: python visualization/generate_gifs_shap_ensemble.py
     depends_on:
       - optimize
