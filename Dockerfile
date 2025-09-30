@@ -27,6 +27,7 @@ ENV MPLBACKEND=Agg \
 RUN python -m pip install --upgrade pip && \
     pip install --no-cache-dir \
       numpy==1.23.5 pandas==2.0.* scikit-learn==1.1.* matplotlib==3.7.* pillow openpyxl \
+      seaborn==0.12.* joblib==1.2.* \
       tpot==0.12.1 xgboost==1.7.* lime==0.2.* deepchem==2.7.1 \
       shap==0.46.*
 

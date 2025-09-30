@@ -1,0 +1,33 @@
+{
+  "config": {
+    "NBITS": 8192,
+    "RADIUS": 1,
+    "USE_FEATURES": 0,
+    "USE_CHIRALITY": 1,
+    "TEST_FRAC": 0.2
+  },
+  "seed": 123,
+  "performance": {
+    "acc": 0.75,
+    "auc": 0.9090909090909092
+  },
+  "stability_topk_bits": {
+    "SHAP": 0.45960625764911944,
+    "LIME": 0.7168131694447484,
+    "ENSEMBLE": 0.6176283109274124
+  },
+  "faithfulness_auc": {
+    "SHAP": {
+      "deletion_auc": 0.34528254813686715,
+      "insertion_auc": 0.5356698610089222
+    },
+    "LIME": {
+      "deletion_auc": 0.3428998790193987,
+      "insertion_auc": 0.46372747534920233
+    },
+    "ENSEMBLE": {
+      "deletion_auc": 0.3514460269559929,
+      "insertion_auc": 0.5316241150639384
+    }
+  }
+}

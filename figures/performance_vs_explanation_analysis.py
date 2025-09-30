@@ -8,6 +8,8 @@ increases, creating detailed visualizations to understand this relationship.
 """
 
 import json
+import matplotlib as mpl
+mpl.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
@@ -15,6 +17,14 @@ from pathlib import Path
 import pandas as pd
 from scipy import stats
 from sklearn.linear_model import LinearRegression
+
+# Nature-style utils
+import sys
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from analysis.sar.fig_style import apply_nature_style, save_figure
+apply_nature_style()
 
 def load_optimization_data():
     """Load the agentic optimization results"""
@@ -47,19 +57,20 @@ def extract_performance_explanation_data(results):
 
 def create_correlation_analysis(df):
     """Create correlation analysis figure"""
-    plt.figure(figsize=(15, 12))
+    # Nature double-column sized multi-panel
+    fig = plt.figure(figsize=(7.2, 6.4))
     
     # Set up the color palette
     colors = {'circular_fingerprint': '#FF6B6B', 'tpot': '#4ECDC4'}
     
     # 1. Overall Scatter Plot with Regression Line
-    plt.subplot(2, 3, 1)
+    ax1 = fig.add_subplot(2, 3, 1)
     
     # Plot points for each model
     for model in df['model'].unique():
         model_data = df[df['model'] == model]
-        plt.scatter(model_data['explanation_quality'], model_data['performance'], 
-                   alpha=0.7, s=80, c=colors.get(model, 'gray'), 
+        ax1.scatter(model_data['explanation_quality'], model_data['performance'], 
+                   alpha=0.7, s=20, c=colors.get(model, 'gray'), 
                    label=model.replace('_', ' ').title())
     
     # Add overall regression line
@@ -68,21 +79,22 @@ def create_correlation_analysis(df):
     reg = LinearRegression().fit(X, y)
     x_range = np.linspace(df['explanation_quality'].min(), df['explanation_quality'].max(), 100)
     y_pred = reg.predict(x_range.reshape(-1, 1))
-    plt.plot(x_range, y_pred, 'r--', alpha=0.8, linewidth=2, label=f'Trend (R²={reg.score(X, y):.3f})')
+    ax1.plot(x_range, y_pred, 'r--', alpha=0.8, linewidth=1.0, label=f'Trend (R²={reg.score(X, y):.3f})')
     
-    plt.xlabel('Explanation Quality')
-    plt.ylabel('Performance')
-    plt.title('Performance vs Explanation Quality\nOverall Relationship')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
+    ax1.set_xlabel('Explanation Quality')
+    ax1.set_ylabel('Performance')
+    ax1.set_title('Performance vs Explanation Quality\nOverall Relationship')
+    ax1.legend(frameon=False, fontsize=6)
+    ax1.grid(True, alpha=0.2)
     
     # Add correlation coefficient
     corr_coef, p_value = stats.pearsonr(df['explanation_quality'], df['performance'])
-    plt.text(0.05, 0.95, f'Correlation: {corr_coef:.3f}\np-value: {p_value:.3f}', 
-             transform=plt.gca().transAxes, bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+    ax1.text(0.05, 0.95, f'r={corr_coef:.3f}\np={p_value:.3f}', 
+             transform=ax1.transAxes, fontsize=6,
+             bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8))
     
     # 2. Model-by-Model Analysis
-    plt.subplot(2, 3, 2)
+    ax2 = fig.add_subplot(2, 3, 2)
     
     model_correlations = {}
     for i, model in enumerate(df['model'].unique()):
@@ -99,35 +111,35 @@ def create_correlation_analysis(df):
                                        model_data['explanation_quality'].max(), 50)
             y_model_pred = reg_model.predict(x_model_range.reshape(-1, 1))
             
-            plt.plot(x_model_range, y_model_pred, color=colors.get(model, 'gray'), 
-                    linewidth=2, label=f'{model.replace("_", " ").title()}: r={corr:.3f}')
+            ax2.plot(x_model_range, y_model_pred, color=colors.get(model, 'gray'), 
+                    linewidth=1.0, label=f'{model.replace("_", " ").title()}: r={corr:.3f}')
     
-    plt.xlabel('Explanation Quality')
-    plt.ylabel('Performance')
-    plt.title('Model-Specific Correlations')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
+    ax2.set_xlabel('Explanation Quality')
+    ax2.set_ylabel('Performance')
+    ax2.set_title('Model-Specific Correlations')
+    ax2.legend(frameon=False, fontsize=6)
+    ax2.grid(True, alpha=0.2)
     
     # 3. Iteration Progress Analysis
-    plt.subplot(2, 3, 3)
+    ax3 = fig.add_subplot(2, 3, 3)
     
     for model in df['model'].unique():
         model_data = df[df['model'] == model].sort_values('iteration')
-        plt.plot(model_data['iteration'], model_data['explanation_quality'], 
+        ax3.plot(model_data['iteration'], model_data['explanation_quality'], 
                 marker='o', label=f'{model.replace("_", " ").title()} - Quality', 
-                color=colors.get(model, 'gray'), alpha=0.7)
-        plt.plot(model_data['iteration'], model_data['performance'], 
+                color=colors.get(model, 'gray'), alpha=0.7, linewidth=0.9)
+        ax3.plot(model_data['iteration'], model_data['performance'], 
                 marker='s', label=f'{model.replace("_", " ").title()} - Performance', 
-                color=colors.get(model, 'gray'), linestyle='--', alpha=0.7)
+                color=colors.get(model, 'gray'), linestyle='--', alpha=0.7, linewidth=0.9)
     
-    plt.xlabel('Iteration')
-    plt.ylabel('Score')
-    plt.title('Performance vs Quality Over Time')
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.grid(True, alpha=0.3)
+    ax3.set_xlabel('Iteration')
+    ax3.set_ylabel('Score')
+    ax3.set_title('Performance vs Quality Over Time')
+    ax3.legend(fontsize=6, frameon=False)
+    ax3.grid(True, alpha=0.2)
     
     # 4. Improvement Analysis
-    plt.subplot(2, 3, 4)
+    ax4 = fig.add_subplot(2, 3, 4)
     
     improvement_data = []
     for model in df['model'].unique():
@@ -145,33 +157,37 @@ def create_correlation_analysis(df):
         imp_df = pd.DataFrame(improvement_data)
         
         # Create quadrant plot
-        plt.axhline(y=0, color='k', linestyle='-', alpha=0.3)
-        plt.axvline(x=0, color='k', linestyle='-', alpha=0.3)
+        ax4.axhline(y=0, color='k', linestyle='-', alpha=0.3)
+        ax4.axvline(x=0, color='k', linestyle='-', alpha=0.3)
         
         for _, row in imp_df.iterrows():
-            plt.scatter(row['quality_change'], row['performance_change'], 
-                       s=200, c=colors.get(row['model'], 'gray'), alpha=0.7)
-            plt.annotate(row['model'].replace('_', '\n'), 
+            ax4.scatter(row['quality_change'], row['performance_change'], 
+                       s=25, c=colors.get(row['model'], 'gray'), alpha=0.7)
+            ax4.annotate(row['model'].replace('_', '\n'), 
                         (row['quality_change'], row['performance_change']),
-                        xytext=(5, 5), textcoords='offset points', ha='left')
+                        xytext=(2, 2), textcoords='offset points', ha='left', fontsize=6)
         
-        plt.xlabel('Explanation Quality Change')
-        plt.ylabel('Performance Change')
-        plt.title('Performance vs Quality Improvement\nQuadrant Analysis')
-        plt.grid(True, alpha=0.3)
+        ax4.set_xlabel('Explanation Quality Change')
+        ax4.set_ylabel('Performance Change')
+        ax4.set_title('Performance vs Quality Improvement\nQuadrant Analysis')
+        ax4.grid(True, alpha=0.2)
         
         # Add quadrant labels
-        plt.text(0.95, 0.95, 'Both Improve', transform=plt.gca().transAxes, 
-                ha='right', va='top', bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgreen", alpha=0.7))
-        plt.text(0.05, 0.95, 'Perf↑ Qual↓', transform=plt.gca().transAxes, 
-                ha='left', va='top', bbox=dict(boxstyle="round,pad=0.3", facecolor="orange", alpha=0.7))
-        plt.text(0.95, 0.05, 'Perf↓ Qual↑', transform=plt.gca().transAxes, 
-                ha='right', va='bottom', bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.7))
-        plt.text(0.05, 0.05, 'Both Decline', transform=plt.gca().transAxes, 
-                ha='left', va='bottom', bbox=dict(boxstyle="round,pad=0.3", facecolor="lightcoral", alpha=0.7))
+        ax4.text(0.95, 0.95, 'Both Improve', transform=ax4.transAxes, 
+                ha='right', va='top', fontsize=6,
+                bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8))
+        ax4.text(0.05, 0.95, 'Perf↑ Qual↓', transform=ax4.transAxes, 
+                ha='left', va='top', fontsize=6,
+                bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8))
+        ax4.text(0.95, 0.05, 'Perf↓ Qual↑', transform=ax4.transAxes, 
+                ha='right', va='bottom', fontsize=6,
+                bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8))
+        ax4.text(0.05, 0.05, 'Both Decline', transform=ax4.transAxes, 
+                ha='left', va='bottom', fontsize=6,
+                bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8))
     
     # 5. Distribution Comparison
-    plt.subplot(2, 3, 5)
+    ax5 = fig.add_subplot(2, 3, 5)
     
     # Create violin plots
     perf_data = [df[df['model'] == model]['performance'].values for model in df['model'].unique()]
@@ -180,8 +196,8 @@ def create_correlation_analysis(df):
     positions_perf = np.arange(1, len(df['model'].unique()) * 2, 2)
     positions_qual = np.arange(2, len(df['model'].unique()) * 2 + 1, 2)
     
-    parts1 = plt.violinplot(perf_data, positions=positions_perf, widths=0.8)
-    parts2 = plt.violinplot(qual_data, positions=positions_qual, widths=0.8)
+    parts1 = ax5.violinplot(perf_data, positions=positions_perf, widths=0.8)
+    parts2 = ax5.violinplot(qual_data, positions=positions_qual, widths=0.8)
     
     # Color the violins
     for pc, color in zip(parts1['bodies'], colors.values()):
@@ -192,21 +208,21 @@ def create_correlation_analysis(df):
         pc.set_facecolor('lightblue')
         pc.set_alpha(0.7)
     
-    plt.xticks(np.arange(1.5, len(df['model'].unique()) * 2, 2), 
-               [m.replace('_', '\n') for m in df['model'].unique()])
-    plt.ylabel('Score')
-    plt.title('Score Distributions by Model')
-    plt.grid(True, alpha=0.3)
+    ax5.set_xticks(np.arange(1.5, len(df['model'].unique()) * 2, 2))
+    ax5.set_xticklabels([m.replace('_', '\n') for m in df['model'].unique()])
+    ax5.set_ylabel('Score')
+    ax5.set_title('Score Distributions by Model')
+    ax5.grid(True, alpha=0.2)
     
     # Add legend
     from matplotlib.patches import Patch
     legend_elements = [Patch(facecolor='gray', alpha=0.7, label='Performance'),
                       Patch(facecolor='lightblue', alpha=0.7, label='Explanation Quality')]
-    plt.legend(handles=legend_elements)
+    ax5.legend(handles=legend_elements, frameon=False, fontsize=6)
     
     # 6. Statistical Summary
-    plt.subplot(2, 3, 6)
-    plt.axis('off')
+    ax6 = fig.add_subplot(2, 3, 6)
+    ax6.axis('off')
     
     # Calculate statistics
     overall_corr, overall_p = stats.pearsonr(df['explanation_quality'], df['performance'])
@@ -232,29 +248,27 @@ Key Findings:
 • Best model: {df.loc[df['combined_score'].idxmax(), 'model'].replace('_', ' ').title()}
 """
     
-    plt.text(0.1, 0.9, summary_text, transform=plt.gca().transAxes, 
-            fontsize=11, verticalalignment='top', fontfamily='monospace',
-            bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
+    ax6.text(0.02, 0.98, summary_text, transform=ax6.transAxes, 
+            fontsize=6.5, va='top', family='monospace',
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.5))
     
-    plt.tight_layout()
+    fig.tight_layout()
     
-    # Save the figure
-    output_path = Path("performance_explanation_correlation_analysis.png")
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    print(f"💾 Correlation analysis saved to: {output_path}")
-    
-    plt.show()
+    # Save the figure (1200 dpi multi-format)
+    output_base = Path("performance_explanation_correlation_analysis.png")
+    save_figure(fig, output_base, dpi=1200, formats=("tiff","png","pdf"))
+    print(f"Saved correlation analysis to: {output_base.with_suffix('')}.[tiff|png|pdf]")
     
     return model_correlations, overall_corr, overall_p
 
 def create_improvement_tracking_figure(df):
     """Create a detailed figure tracking improvement patterns"""
-    plt.figure(figsize=(16, 10))
+    fig = plt.figure(figsize=(7.2, 6.4))
     
     colors = {'circular_fingerprint': '#FF6B6B', 'tpot': '#4ECDC4'}
     
     # 1. Sequential Improvement Analysis
-    plt.subplot(2, 3, 1)
+    ax1 = fig.add_subplot(2, 3, 1)
     
     for model in df['model'].unique():
         model_data = df[df['model'] == model].sort_values('iteration')
@@ -263,21 +277,21 @@ def create_improvement_tracking_figure(df):
         perf_rolling = model_data['performance'].rolling(window=2, min_periods=1).mean()
         qual_rolling = model_data['explanation_quality'].rolling(window=2, min_periods=1).mean()
         
-        plt.plot(model_data['iteration'], perf_rolling, 
+        ax1.plot(model_data['iteration'], perf_rolling, 
                 marker='o', label=f'{model.replace("_", " ").title()} Performance', 
-                color=colors.get(model, 'gray'), linewidth=2)
-        plt.plot(model_data['iteration'], qual_rolling, 
+                color=colors.get(model, 'gray'), linewidth=1.0)
+        ax1.plot(model_data['iteration'], qual_rolling, 
                 marker='s', label=f'{model.replace("_", " ").title()} Quality', 
-                color=colors.get(model, 'gray'), linestyle='--', linewidth=2, alpha=0.7)
+                color=colors.get(model, 'gray'), linestyle='--', linewidth=1.0, alpha=0.7)
     
-    plt.xlabel('Iteration')
-    plt.ylabel('Rolling Average Score')
-    plt.title('Rolling Average Performance vs Quality')
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.grid(True, alpha=0.3)
+    ax1.set_xlabel('Iteration')
+    ax1.set_ylabel('Rolling Average Score')
+    ax1.set_title('Rolling Average Performance vs Quality')
+    ax1.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=6, frameon=False)
+    ax1.grid(True, alpha=0.2)
     
     # 2. Best Score Tracking
-    plt.subplot(2, 3, 2)
+    ax2 = fig.add_subplot(2, 3, 2)
     
     for model in df['model'].unique():
         model_data = df[df['model'] == model].sort_values('iteration')
@@ -286,21 +300,21 @@ def create_improvement_tracking_figure(df):
         best_perf = model_data['performance'].cummax()
         best_qual = model_data['explanation_quality'].cummax()
         
-        plt.plot(model_data['iteration'], best_perf, 
+        ax2.plot(model_data['iteration'], best_perf, 
                 marker='o', label=f'{model.replace("_", " ").title()} Best Perf', 
-                color=colors.get(model, 'gray'), linewidth=2)
-        plt.plot(model_data['iteration'], best_qual, 
+                color=colors.get(model, 'gray'), linewidth=1.0)
+        ax2.plot(model_data['iteration'], best_qual, 
                 marker='s', label=f'{model.replace("_", " ").title()} Best Qual', 
-                color=colors.get(model, 'gray'), linestyle='--', linewidth=2, alpha=0.7)
+                color=colors.get(model, 'gray'), linestyle='--', linewidth=1.0, alpha=0.7)
     
-    plt.xlabel('Iteration')
-    plt.ylabel('Cumulative Best Score')
-    plt.title('Best Score Evolution')
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.grid(True, alpha=0.3)
+    ax2.set_xlabel('Iteration')
+    ax2.set_ylabel('Cumulative Best Score')
+    ax2.set_title('Best Score Evolution')
+    ax2.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=6, frameon=False)
+    ax2.grid(True, alpha=0.2)
     
     # 3. Improvement Momentum
-    plt.subplot(2, 3, 3)
+    ax3 = fig.add_subplot(2, 3, 3)
     
     for model in df['model'].unique():
         model_data = df[df['model'] == model].sort_values('iteration')
@@ -309,20 +323,20 @@ def create_improvement_tracking_figure(df):
             perf_diff = model_data['performance'].diff()
             qual_diff = model_data['explanation_quality'].diff()
             
-            plt.scatter(qual_diff.dropna(), perf_diff.dropna(), 
-                       s=100, alpha=0.7, c=colors.get(model, 'gray'), 
+            ax3.scatter(qual_diff.dropna(), perf_diff.dropna(), 
+                       s=20, alpha=0.7, c=colors.get(model, 'gray'), 
                        label=model.replace('_', ' ').title())
     
-    plt.axhline(y=0, color='k', linestyle='-', alpha=0.3)
-    plt.axvline(x=0, color='k', linestyle='-', alpha=0.3)
-    plt.xlabel('Quality Change (Iteration to Iteration)')
-    plt.ylabel('Performance Change (Iteration to Iteration)')
-    plt.title('Improvement Momentum Analysis')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
+    ax3.axhline(y=0, color='k', linestyle='-', alpha=0.3)
+    ax3.axvline(x=0, color='k', linestyle='-', alpha=0.3)
+    ax3.set_xlabel('Quality Change (Iteration to Iteration)')
+    ax3.set_ylabel('Performance Change (Iteration to Iteration)')
+    ax3.set_title('Improvement Momentum Analysis')
+    ax3.legend(frameon=False, fontsize=6)
+    ax3.grid(True, alpha=0.2)
     
     # 4. Model Efficiency Analysis
-    plt.subplot(2, 3, 4)
+    ax4 = fig.add_subplot(2, 3, 4)
     
     efficiency_data = []
     for model in df['model'].unique():
@@ -342,20 +356,20 @@ def create_improvement_tracking_figure(df):
     
     # Create bubble plot
     for _, row in eff_df.iterrows():
-        plt.scatter(row['avg_quality'], row['avg_performance'], 
-                   s=row['stability'] * 500, alpha=0.6, 
+        ax4.scatter(row['avg_quality'], row['avg_performance'], 
+                   s=row['stability'] * 80, alpha=0.6, 
                    c=colors.get(row['model'], 'gray'))
-        plt.annotate(row['model'].replace('_', '\n'), 
+        ax4.annotate(row['model'].replace('_', '\n'), 
                     (row['avg_quality'], row['avg_performance']),
-                    xytext=(5, 5), textcoords='offset points', ha='left')
+                    xytext=(2, 2), textcoords='offset points', ha='left', fontsize=6)
     
-    plt.xlabel('Average Explanation Quality')
-    plt.ylabel('Average Performance')
-    plt.title('Model Efficiency Analysis\n(Bubble size = Stability)')
-    plt.grid(True, alpha=0.3)
+    ax4.set_xlabel('Average Explanation Quality')
+    ax4.set_ylabel('Average Performance')
+    ax4.set_title('Model Efficiency Analysis\n(Bubble size = Stability)')
+    ax4.grid(True, alpha=0.2)
     
     # 5. Quality-Performance Trade-off Analysis
-    plt.subplot(2, 3, 5)
+    ax5 = fig.add_subplot(2, 3, 5)
     
     # Calculate trade-off ratios
     for model in df['model'].unique():
@@ -364,54 +378,52 @@ def create_improvement_tracking_figure(df):
         # Quality to Performance ratio
         qp_ratio = model_data['explanation_quality'] / model_data['performance']
         
-        plt.hist(qp_ratio, alpha=0.7, bins=10, 
+        ax5.hist(qp_ratio.dropna(), alpha=0.7, bins=10, 
                 label=f'{model.replace("_", " ").title()}', 
                 color=colors.get(model, 'gray'))
     
-    plt.axvline(x=1, color='r', linestyle='--', alpha=0.8, label='Equal Quality/Performance')
-    plt.xlabel('Quality/Performance Ratio')
-    plt.ylabel('Frequency')
-    plt.title('Quality-Performance Trade-off Distribution')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
+    ax5.axvline(x=1, color='r', linestyle='--', alpha=0.8, label='Equal Quality/Performance')
+    ax5.set_xlabel('Quality/Performance Ratio')
+    ax5.set_ylabel('Frequency')
+    ax5.set_title('Quality-Performance Trade-off Distribution')
+    ax5.legend(frameon=False, fontsize=6)
+    ax5.grid(True, alpha=0.2)
     
     # 6. Optimization Trajectory
-    plt.subplot(2, 3, 6)
+    ax6 = fig.add_subplot(2, 3, 6)
     
     for model in df['model'].unique():
         model_data = df[df['model'] == model].sort_values('iteration')
         
         # Create trajectory plot
-        plt.plot(model_data['explanation_quality'], model_data['performance'], 
-                marker='o', markersize=8, linewidth=2, alpha=0.7,
+        ax6.plot(model_data['explanation_quality'], model_data['performance'], 
+                marker='o', markersize=3, linewidth=1.0, alpha=0.7,
                 color=colors.get(model, 'gray'),
                 label=model.replace('_', ' ').title())
         
         # Mark start and end points
         if len(model_data) > 0:
-            plt.scatter(model_data['explanation_quality'].iloc[0], 
+            ax6.scatter(model_data['explanation_quality'].iloc[0], 
                        model_data['performance'].iloc[0], 
-                       s=200, marker='s', color=colors.get(model, 'gray'), 
-                       alpha=0.9, edgecolors='black', linewidth=2, label='_nolegend_')
-            plt.scatter(model_data['explanation_quality'].iloc[-1], 
+                       s=25, marker='s', color=colors.get(model, 'gray'), 
+                       alpha=0.9, edgecolors='black', linewidth=0.6, label='_nolegend_')
+            ax6.scatter(model_data['explanation_quality'].iloc[-1], 
                        model_data['performance'].iloc[-1], 
-                       s=200, marker='*', color=colors.get(model, 'gray'), 
-                       alpha=0.9, edgecolors='black', linewidth=2, label='_nolegend_')
+                       s=35, marker='*', color=colors.get(model, 'gray'), 
+                       alpha=0.9, edgecolors='black', linewidth=0.6, label='_nolegend_')
     
-    plt.xlabel('Explanation Quality')
-    plt.ylabel('Performance')
-    plt.title('Optimization Trajectory\n(Square=Start, Star=End)')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
+    ax6.set_xlabel('Explanation Quality')
+    ax6.set_ylabel('Performance')
+    ax6.set_title('Optimization Trajectory\n(Square=Start, Star=End)')
+    ax6.legend(frameon=False, fontsize=6)
+    ax6.grid(True, alpha=0.2)
     
-    plt.tight_layout()
+    fig.tight_layout()
     
-    # Save the figure
-    output_path = Path("improvement_tracking_analysis.png")
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    print(f"💾 Improvement tracking saved to: {output_path}")
-    
-    plt.show()
+    # Save the figure (1200 dpi multi-format)
+    output_base = Path("improvement_tracking_analysis.png")
+    save_figure(fig, output_base, dpi=1200, formats=("tiff","png","pdf"))
+    print(f"Saved improvement tracking to: {output_base.with_suffix('')}.[tiff|png|pdf]")
 
 def create_summary_report(df, correlations, overall_corr, overall_p):
     """Create a comprehensive summary report"""

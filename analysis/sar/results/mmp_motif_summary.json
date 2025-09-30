@@ -1,0 +1,85 @@
+{
+  "config": {
+    "NBITS": 8192,
+    "RADIUS": 1,
+    "USE_FEATURES": 0,
+    "USE_CHIRALITY": 1,
+    "N_PER_CLASS": 60,
+    "EXPLAIN_SUBSET": 120,
+    "TOPK_ATOMS": 12,
+    "ENSEMBLE_ALPHA": 0.5,
+    "MAX_MMP_PAIRS": 200,
+    "MCS_TIMEOUT": 2
+  },
+  "performance_eval_split": {
+    "acc": 0.6388888888888888,
+    "auc": 0.7746913580246914
+  },
+  "motif_enrichment": {
+    "AromaticRing": {
+      "odds_ratio": 1.0,
+      "p_value": 0.8676323347781927
+    },
+    "Pyridine": {
+      "odds_ratio": 3.1714285714285713,
+      "p_value": 1.0
+    },
+    "Amide": {
+      "odds_ratio": 2.302857142857143,
+      "p_value": 0.4414183267820536
+    },
+    "CarboxylicAcid": {
+      "odds_ratio": 1.0,
+      "p_value": 0.8676323347781927
+    },
+    "Sulfonamide": {
+      "odds_ratio": 1.0,
+      "p_value": 0.8676323347781927
+    },
+    "Nitro": {
+      "odds_ratio": 0.5657142857142857,
+      "p_value": 1.0
+    },
+    "Halogen": {
+      "odds_ratio": 2.6084656084656084,
+      "p_value": 0.28884436634648486
+    },
+    "Phenol": {
+      "odds_ratio": 0.3795918367346939,
+      "p_value": 0.5958830905651777
+    },
+    "Thiol": {
+      "odds_ratio": 1.0,
+      "p_value": 0.8676323347781927
+    },
+    "QuaternaryAmmonium": {
+      "odds_ratio": 0.3153153153153153,
+      "p_value": 1.0
+    },
+    "HBDonor": {
+      "odds_ratio": 1.9870129870129871,
+      "p_value": 0.4876960569759797
+    },
+    "HBAcceptor": {
+      "odds_ratio": 1.4903225806451612,
+      "p_value": 1.0
+    }
+  },
+  "mmp_consistency": {
+    "SHAP": {
+      "active_hit_rate": 0.0,
+      "inactive_hit_rate": 0.0,
+      "n_pairs": 0
+    },
+    "LIME": {
+      "active_hit_rate": 0.0,
+      "inactive_hit_rate": 0.0,
+      "n_pairs": 0
+    },
+    "ENSEMBLE": {
+      "active_hit_rate": 0.0,
+      "inactive_hit_rate": 0.0,
+      "n_pairs": 0
+    }
+  }
+}

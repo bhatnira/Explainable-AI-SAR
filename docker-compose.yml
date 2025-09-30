@@ -101,3 +101,96 @@ services:
     command: python visualization/generate_gifs_shap_ensemble.py
     depends_on:
       - optimize
+
+  # SAR analysis service (persists outputs to host)
+  sar:
+    build: .
+    container_name: circular-fingerprint-sar
+    volumes:
+      - ./data:/workspace/data:ro
+      - ./analysis/sar:/workspace/analysis/sar
+      - ./visualization:/workspace/visualization:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+    command: python analysis/sar/sar_analysis.py
+
+  # Sweep analysis across GIF parameters and interpretation types
+  gif-sweep:
+    build: .
+    container_name: circular-fingerprint-gif-sweep
+    volumes:
+      - ./data:/workspace/data:ro
+      - ./analysis/sar:/workspace/analysis/sar
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+      - MAX_ITERS=24
+      - N_PER_CLASS=50
+      - ENSEMBLE_ALPHA=0.5
+      - TOPK_ATOMS=8
+    command: python analysis/sar/gif_sweep_analysis.py
+
+  # Fast sweep service for parameter + interpretation selection
+  sar-fast-sweep:
+    build: .
+    container_name: circular-fingerprint-sar-fast
+    volumes:
+      - ./data:/workspace/data:ro
+      - ./analysis/sar:/workspace/analysis/sar
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+      - N_PER_CLASS=30
+      - MAX_WORKERS=4
+      - STAGE2_TOPK_CONFIGS=8
+      - STAGE2_TEST_SUBSET=80
+      - ENSEMBLE_ALPHA=0.5
+      - LAMBDA_COLLISION=0.2
+    command: python analysis/sar/fast_sweep.py
+
+  # Scaffold split evaluation service
+  sar-scaffold-split:
+    build: .
+    container_name: circular-fingerprint-sar-scaffold
+    volumes:
+      - ./data:/workspace/data:ro
+      - ./analysis/sar:/workspace/analysis/sar
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+      - NBITS=8192
+      - RADIUS=1
+      - USEFEATURES=0
+      - USECHIRALITY=1
+      - N_PER_CLASS=60
+      - TEST_FRAC=0.2
+      - ENSEMBLE_ALPHA=0.5
+      - TOPK_BITS=32
+      - N_BOOTSTRAP=5
+      - EXPLAIN_SUBSET=100
+      - REPEATS=10
+      - BASE_SEED=123
+    command: python analysis/sar/scaffold_split_eval.py
+
+  # MMP & Motif enrichment analysis
+  sar-mmp-motif:
+    build: .
+    container_name: circular-fingerprint-sar-mmp
+    volumes:
+      - ./data:/workspace/data:ro
+      - ./analysis/sar:/workspace/analysis/sar
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+      - NBITS=8192
+      - RADIUS=1
+      - USEFEATURES=0
+      - USECHIRALITY=1
+      - N_PER_CLASS=60
+      - EXPLAIN_SUBSET=120
+      - TOPK_ATOMS=12
+      - ENSEMBLE_ALPHA=0.5
+      - MAX_MMP_PAIRS=200
+      - MCS_TIMEOUT=2
+    command: python analysis/sar/mmp_motif_analysis.py

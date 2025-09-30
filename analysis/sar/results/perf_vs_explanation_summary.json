@@ -1,0 +1,30 @@
+{
+  "auc_vs_collision": {
+    "pearson_r": 0.10881764568813601,
+    "pearson_p": 0.08225917913451625,
+    "spearman_r": 0.006154241399503685,
+    "spearman_p": 0.9219426907425994,
+    "n": 256
+  },
+  "auc_vs_faithfulness_ENSEMBLE": {
+    "pearson_r": -0.04394278663505264,
+    "pearson_p": 0.9177132787875671,
+    "spearman_r": 0.08247860988423225,
+    "spearman_p": 0.8460525238666443,
+    "n": 8
+  },
+  "auc_vs_faithfulness_SHAP": {
+    "pearson_r": -0.014302406439157964,
+    "pearson_p": 0.9731866448065596,
+    "spearman_r": 0.08247860988423225,
+    "spearman_p": 0.8460525238666443,
+    "n": 8
+  },
+  "auc_vs_faithfulness_LIME": {
+    "pearson_r": -0.12864126062400122,
+    "pearson_p": 0.7614454621865487,
+    "spearman_r": 0.08247860988423225,
+    "spearman_p": 0.8460525238666443,
+    "n": 8
+  }
+}

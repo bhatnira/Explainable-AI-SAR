@@ -1,0 +1,20 @@
+{
+  "config": {
+    "NBITS": 2048,
+    "RADIUS": 2,
+    "N_PER_CLASS": 50,
+    "N_BOOTSTRAP": 5,
+    "ENSEMBLE_ALPHA": 0.5,
+    "USE_FEATURES": false,
+    "USE_CHIRALITY": false
+  },
+  "performance": {
+    "accuracy": 0.75,
+    "roc_auc": 0.79
+  },
+  "collision_metrics": {
+    "collision_rate_mean": 0.00048828125,
+    "avg_frags_per_active_bit": 1.1750254223676941,
+    "bit_entropy_mean": 0.7886643993625064
+  }
+}

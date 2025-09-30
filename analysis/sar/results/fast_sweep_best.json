@@ -1,0 +1,13 @@
+{
+  "radius": 1,
+  "nBits": 4096,
+  "useFeatures": 0,
+  "useChirality": 0,
+  "auc": 0.7777777777777779,
+  "collision_rate": 0.0475,
+  "avg_frags_per_active_bit": 1.0498687664041995,
+  "faithfulness_SHAP": 0.29228867459881186,
+  "faithfulness_LIME": 0.20009227188103518,
+  "faithfulness_ENSEMBLE": 0.3054683257439569,
+  "best_interpretation": "ENSEMBLE"
+}

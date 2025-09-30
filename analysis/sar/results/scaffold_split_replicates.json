@@ -1,0 +1,436 @@
+{
+  "config": {
+    "NBITS": 8192,
+    "RADIUS": 1,
+    "USE_FEATURES": 0,
+    "USE_CHIRALITY": 1,
+    "TEST_FRAC": 0.2,
+    "TOPK_BITS": 32,
+    "N_BOOTSTRAP": 5,
+    "EXPLAIN_SUBSET": 100,
+    "REPEATS": 10,
+    "BASE_SEED": 123
+  },
+  "seeds": [
+    123,
+    124,
+    125,
+    126,
+    127,
+    128,
+    129,
+    130,
+    131,
+    132
+  ],
+  "performance": {
+    "acc": {
+      "mean": 0.6791666666666666,
+      "std": 0.0963252271355539,
+      "n": 10,
+      "ci95": 0.05970299432075578
+    },
+    "auc": {
+      "mean": 0.770353812853813,
+      "std": 0.07278742568882653,
+      "n": 10,
+      "ci95": 0.04511411383860066
+    }
+  },
+  "stability_topk_bits": {
+    "SHAP": {
+      "mean": 0.3972359839879531,
+      "std": 0.06906258265199314,
+      "n": 10,
+      "ci95": 0.04280543220569031
+    },
+    "LIME": {
+      "mean": 0.7559647199420665,
+      "std": 0.050522424076671575,
+      "n": 10,
+      "ci95": 0.031314122867061464
+    },
+    "ENSEMBLE": {
+      "mean": 0.6744879838133562,
+      "std": 0.03830140573570234,
+      "n": 10,
+      "ci95": 0.023739457223367084
+    }
+  },
+  "faithfulness_auc": {
+    "SHAP": {
+      "deletion_auc": {
+        "mean": 0.39929464359530964,
+        "std": 0.04973830619849458,
+        "n": 10,
+        "ci95": 0.03082812157103831
+      },
+      "insertion_auc": {
+        "mean": 0.630859440226825,
+        "std": 0.06048887795270343,
+        "n": 10,
+        "ci95": 0.03749139497794319
+      }
+    },
+    "LIME": {
+      "deletion_auc": {
+        "mean": 0.3840055622921948,
+        "std": 0.04707752944483793,
+        "n": 10,
+        "ci95": 0.029178955053228692
+      },
+      "insertion_auc": {
+        "mean": 0.5405433478768591,
+        "std": 0.05849833905593285,
+        "n": 10,
+        "ci95": 0.03625764618769224
+      }
+    },
+    "ENSEMBLE": {
+      "deletion_auc": {
+        "mean": 0.40172104510937323,
+        "std": 0.049106024163675294,
+        "n": 10,
+        "ci95": 0.03043622910572588
+      },
+      "insertion_auc": {
+        "mean": 0.6270301450726888,
+        "std": 0.06096389863149101,
+        "n": 10,
+        "ci95": 0.037785815844950194
+      }
+    }
+  },
+  "per_seed_results": [
+    {
+      "config": {
+        "NBITS": 8192,
+        "RADIUS": 1,
+        "USE_FEATURES": 0,
+        "USE_CHIRALITY": 1,
+        "TEST_FRAC": 0.2
+      },
+      "seed": 123,
+      "performance": {
+        "acc": 0.75,
+        "auc": 0.9090909090909092
+      },
+      "stability_topk_bits": {
+        "SHAP": 0.45960625764911944,
+        "LIME": 0.7168131694447484,
+        "ENSEMBLE": 0.6176283109274124
+      },
+      "faithfulness_auc": {
+        "SHAP": {
+          "deletion_auc": 0.34528254813686715,
+          "insertion_auc": 0.5356698610089222
+        },
+        "LIME": {
+          "deletion_auc": 0.3428998790193987,
+          "insertion_auc": 0.46372747534920233
+        },
+        "ENSEMBLE": {
+          "deletion_auc": 0.3514460269559929,
+          "insertion_auc": 0.5316241150639384
+        }
+      }
+    },
+    {
+      "config": {
+        "NBITS": 8192,
+        "RADIUS": 1,
+        "USE_FEATURES": 0,
+        "USE_CHIRALITY": 1,
+        "TEST_FRAC": 0.2
+      },
+      "seed": 124,
+      "performance": {
+        "acc": 0.625,
+        "auc": 0.7714285714285715
+      },
+      "stability_topk_bits": {
+        "SHAP": 0.43274198067096237,
+        "LIME": 0.829467787114846,
+        "ENSEMBLE": 0.7231222199643252
+      },
+      "faithfulness_auc": {
+        "SHAP": {
+          "deletion_auc": 0.32456559472886065,
+          "insertion_auc": 0.6625393012306227
+        },
+        "LIME": {
+          "deletion_auc": 0.3155717481993187,
+          "insertion_auc": 0.5440723662961613
+        },
+        "ENSEMBLE": {
+          "deletion_auc": 0.32660866804369093,
+          "insertion_auc": 0.6588743420253188
+        }
+      }
+    },
+    {
+      "config": {
+        "NBITS": 8192,
+        "RADIUS": 1,
+        "USE_FEATURES": 0,
+        "USE_CHIRALITY": 1,
+        "TEST_FRAC": 0.2
+      },
+      "seed": 125,
+      "performance": {
+        "acc": 0.7083333333333334,
+        "auc": 0.75
+      },
+      "stability_topk_bits": {
+        "SHAP": 0.3216454808873904,
+        "LIME": 0.7244914493694982,
+        "ENSEMBLE": 0.6673495648591926
+      },
+      "faithfulness_auc": {
+        "SHAP": {
+          "deletion_auc": 0.39877873064484787,
+          "insertion_auc": 0.6180070032052747
+        },
+        "LIME": {
+          "deletion_auc": 0.3775479256009867,
+          "insertion_auc": 0.5151615482220143
+        },
+        "ENSEMBLE": {
+          "deletion_auc": 0.40153906234956144,
+          "insertion_auc": 0.6146404249989754
+        }
+      }
+    },
+    {
+      "config": {
+        "NBITS": 8192,
+        "RADIUS": 1,
+        "USE_FEATURES": 0,
+        "USE_CHIRALITY": 1,
+        "TEST_FRAC": 0.2
+      },
+      "seed": 126,
+      "performance": {
+        "acc": 0.6666666666666666,
+        "auc": 0.75
+      },
+      "stability_topk_bits": {
+        "SHAP": 0.32518177636575635,
+        "LIME": 0.7943912244841037,
+        "ENSEMBLE": 0.7401196685407212
+      },
+      "faithfulness_auc": {
+        "SHAP": {
+          "deletion_auc": 0.42939824846764335,
+          "insertion_auc": 0.6707607892100687
+        },
+        "LIME": {
+          "deletion_auc": 0.42546478152817274,
+          "insertion_auc": 0.6169922680495195
+        },
+        "ENSEMBLE": {
+          "deletion_auc": 0.43390329660943083,
+          "insertion_auc": 0.6691795171326634
+        }
+      }
+    },
+    {
+      "config": {
+        "NBITS": 8192,
+        "RADIUS": 1,
+        "USE_FEATURES": 0,
+        "USE_CHIRALITY": 1,
+        "TEST_FRAC": 0.2
+      },
+      "seed": 127,
+      "performance": {
+        "acc": 0.7916666666666666,
+        "auc": 0.7083333333333333
+      },
+      "stability_topk_bits": {
+        "SHAP": 0.5183981954457181,
+        "LIME": 0.675127609094233,
+        "ENSEMBLE": 0.6717526148078138
+      },
+      "faithfulness_auc": {
+        "SHAP": {
+          "deletion_auc": 0.44768577347436594,
+          "insertion_auc": 0.6885624984704044
+        },
+        "LIME": {
+          "deletion_auc": 0.42739133462974993,
+          "insertion_auc": 0.5931709522266773
+        },
+        "ENSEMBLE": {
+          "deletion_auc": 0.44951068775225683,
+          "insertion_auc": 0.6851560394117993
+        }
+      }
+    },
+    {
+      "config": {
+        "NBITS": 8192,
+        "RADIUS": 1,
+        "USE_FEATURES": 0,
+        "USE_CHIRALITY": 1,
+        "TEST_FRAC": 0.2
+      },
+      "seed": 128,
+      "performance": {
+        "acc": 0.6666666666666666,
+        "auc": 0.7972027972027972
+      },
+      "stability_topk_bits": {
+        "SHAP": 0.4612252554120838,
+        "LIME": 0.7550832035042562,
+        "ENSEMBLE": 0.6694204385090137
+      },
+      "faithfulness_auc": {
+        "SHAP": {
+          "deletion_auc": 0.4231353004853766,
+          "insertion_auc": 0.5937119216769581
+        },
+        "LIME": {
+          "deletion_auc": 0.3935524471447637,
+          "insertion_auc": 0.505725098386522
+        },
+        "ENSEMBLE": {
+          "deletion_auc": 0.42116063362309314,
+          "insertion_auc": 0.5909489404566757
+        }
+      }
+    },
+    {
+      "config": {
+        "NBITS": 8192,
+        "RADIUS": 1,
+        "USE_FEATURES": 0,
+        "USE_CHIRALITY": 1,
+        "TEST_FRAC": 0.2
+      },
+      "seed": 129,
+      "performance": {
+        "acc": 0.75,
+        "auc": 0.7972027972027971
+      },
+      "stability_topk_bits": {
+        "SHAP": 0.34291058619675774,
+        "LIME": 0.7994948154700476,
+        "ENSEMBLE": 0.6869980912086174
+      },
+      "faithfulness_auc": {
+        "SHAP": {
+          "deletion_auc": 0.3711378045324495,
+          "insertion_auc": 0.5305674366995433
+        },
+        "LIME": {
+          "deletion_auc": 0.34268475811176535,
+          "insertion_auc": 0.4479890259650438
+        },
+        "ENSEMBLE": {
+          "deletion_auc": 0.37171018969155867,
+          "insertion_auc": 0.524720257747525
+        }
+      }
+    },
+    {
+      "config": {
+        "NBITS": 8192,
+        "RADIUS": 1,
+        "USE_FEATURES": 0,
+        "USE_CHIRALITY": 1,
+        "TEST_FRAC": 0.2
+      },
+      "seed": 130,
+      "performance": {
+        "acc": 0.4583333333333333,
+        "auc": 0.6258741258741258
+      },
+      "stability_topk_bits": {
+        "SHAP": 0.4145480815468307,
+        "LIME": 0.7998152774623364,
+        "ENSEMBLE": 0.6911787438103227
+      },
+      "faithfulness_auc": {
+        "SHAP": {
+          "deletion_auc": 0.3713050349830134,
+          "insertion_auc": 0.642954689445236
+        },
+        "LIME": {
+          "deletion_auc": 0.3563504752362332,
+          "insertion_auc": 0.541633495039336
+        },
+        "ENSEMBLE": {
+          "deletion_auc": 0.3719907347095425,
+          "insertion_auc": 0.6386388565180725
+        }
+      }
+    },
+    {
+      "config": {
+        "NBITS": 8192,
+        "RADIUS": 1,
+        "USE_FEATURES": 0,
+        "USE_CHIRALITY": 1,
+        "TEST_FRAC": 0.2
+      },
+      "seed": 131,
+      "performance": {
+        "acc": 0.75,
+        "auc": 0.7972027972027972
+      },
+      "stability_topk_bits": {
+        "SHAP": 0.346299818478116,
+        "LIME": 0.6999710641815906,
+        "ENSEMBLE": 0.628409262841003
+      },
+      "faithfulness_auc": {
+        "SHAP": {
+          "deletion_auc": 0.4904291118716816,
+          "insertion_auc": 0.7025978751520747
+        },
+        "LIME": {
+          "deletion_auc": 0.469700707957258,
+          "insertion_auc": 0.6134932663523439
+        },
+        "ENSEMBLE": {
+          "deletion_auc": 0.4913708043570203,
+          "insertion_auc": 0.699134066908475
+        }
+      }
+    },
+    {
+      "config": {
+        "NBITS": 8192,
+        "RADIUS": 1,
+        "USE_FEATURES": 0,
+        "USE_CHIRALITY": 1,
+        "TEST_FRAC": 0.2
+      },
+      "seed": 132,
+      "performance": {
+        "acc": 0.625,
+        "auc": 0.7972027972027972
+      },
+      "stability_topk_bits": {
+        "SHAP": 0.3498024072267964,
+        "LIME": 0.7649915992950048,
+        "ENSEMBLE": 0.6489009226651403
+      },
+      "faithfulness_auc": {
+        "SHAP": {
+          "deletion_auc": 0.3912282886279907,
+          "insertion_auc": 0.6632230261691454
+        },
+        "LIME": {
+          "deletion_auc": 0.38889156549430026,
+          "insertion_auc": 0.5634679828817707
+        },
+        "ENSEMBLE": {
+          "deletion_auc": 0.3979703470015845,
+          "insertion_auc": 0.6573848904634455
+        }
+      }
+    }
+  ]
+}
