@@ -55,3 +55,7 @@ logs/
 *.so
 *.dylib
 *.dll
+
+# SAR analysis figures (do not commit)
+analysis/sar/figures/
+analysis/sar/figures/**
