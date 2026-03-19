@@ -1,0 +1,52 @@
+🤖 AGENTIC PARAMETER OPTIMIZATION REPORT
+============================================================
+
+🎯 Optimization completed: 2025-09-19T02:12:33.178593
+📊 Models optimized: 3
+🔄 Total evaluations: 12
+🏆 Best model: CHEMBERTA
+⭐ Best score: 0.8206
+
+🔬 CIRCULAR_FINGERPRINT ANALYSIS
+----------------------------------------
+Iterations completed: 6
+Best combined score: 0.6924
+  • Performance: 0.8153
+  • Explanation Quality: 0.5080
+
+Best parameters:
+  • radius: 2
+  • nBits: 2048
+  • useFeatures: False
+  • useChirality: True
+
+Score improvement: 0.0809
+Best iteration: 0
+
+🔬 CHEMBERTA ANALYSIS
+----------------------------------------
+Iterations completed: 6
+Best combined score: 0.8206
+  • Performance: 0.8067
+  • Explanation Quality: 0.8415
+
+Best parameters:
+  • max_length: 256
+  • learning_rate: 2e-05
+  • batch_size: 16
+  • num_epochs: 5
+
+Score improvement: 0.0988
+Best iteration: 11
+
+🧠 AGENTIC LEARNING INSIGHTS
+----------------------------------------
+Final exploration rate: 0.6600
+Final temperature: 0.5404
+Successful patterns found: 0
+
+💡 KEY FINDINGS
+----------------------------------------
+✅ Best model achieved higher explanation quality than performance
+🎯 Optimal balance found: 0.8206
+   (60% performance + 40% explanation quality)
