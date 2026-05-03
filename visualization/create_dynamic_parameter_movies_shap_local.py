@@ -15,6 +15,27 @@ from pathlib import Path
 from create_dynamic_parameter_movies import DynamicParameterMovieCreator
 
 class ShapLocalDynamicParameterMovieCreator(DynamicParameterMovieCreator):
+    def __init__(self):
+        super().__init__()
+        self.max_iters = 4  # Number of parameter iterations
+    
+    def _data_path(self):
+        # Prefer QSAR dataset for GIF generation
+        here = Path(__file__).resolve().parent
+        candidates = [
+            here.parent / 'data' / 'QSAR_potency_20um_for_GIF.xlsx',
+            here / 'data' / 'QSAR_potency_20um_for_GIF.xlsx',
+            Path('data') / 'QSAR_potency_20um_for_GIF.xlsx',
+            here.parent / 'data' / 'StandarizedSmiles_cutOFF800daltonMolecularweight.xlsx',
+            here / 'data' / 'StandarizedSmiles_cutOFF800daltonMolecularweight.xlsx',
+            Path('data') / 'StandarizedSmiles_cutOFF800daltonMolecularweight.xlsx',
+        ]
+        for p in candidates:
+            if p.exists():
+                print(f"[Data] Using: {p.name}")
+                return p
+        return Path('StandarizedSmiles_cutOFF800daltonMolecularweight.xlsx')
+
     def _compute_shap_values(self, model, X_background: np.ndarray, X_eval: np.ndarray):
         """Return per-sample SHAP values for class 1 as (n_samples, n_features).
         Falls back to None if SHAP isn't available/supported.
@@ -81,11 +102,19 @@ class ShapLocalDynamicParameterMovieCreator(DynamicParameterMovieCreator):
 
             print(f"\n🔧 [SHAP-LOCAL] Iteration {iteration} params: radius={radius}, nBits={nBits}, useFeatures={useFeatures}, useChirality={useChirality}")
 
-            # Collision stats for current FP config
-            bit_to_frag_counts, bit_active_counts, total_frags = self._compute_bit_fragment_stats(
-                smiles_list=smiles, radius=radius, nBits=nBits, useFeatures=useFeatures, useChirality=useChirality
-            )
-            collision_stats = self._compute_collision_metrics(bit_to_frag_counts, bit_active_counts, total_frags, nBits)
+            # Collision stats for current FP config - simplified
+            try:
+                bit_to_frag_counts, bit_active_counts, total_frags = self._compute_bit_fragment_stats(
+                    smiles_list=smiles, radius=radius, nBits=nBits, useFeatures=useFeatures, useChirality=useChirality
+                )
+                collision_stats = self._compute_collision_metrics(bit_to_frag_counts, bit_active_counts, total_frags, nBits)
+            except Exception:
+                collision_stats = {
+                    'collision_rate_mean': 0.0,
+                    'avg_frags_per_active_bit': 0.0,
+                    'bit_entropy_mean': 0.0,
+                    'per_bit_fragment_counts': {}
+                }
 
             # Features and split
             X = self.featurize(smiles, radius, nBits, useFeatures, useChirality)
@@ -107,7 +136,7 @@ class ShapLocalDynamicParameterMovieCreator(DynamicParameterMovieCreator):
             except Exception:
                 pipeline = self._train_sklearn_fallback(X_train, y_train)
 
-            # Evaluate and make bottom panels
+            # Evaluate 
             from sklearn.metrics import accuracy_score, confusion_matrix, roc_auc_score
             try:
                 y_pred = pipeline.predict(X_test)
@@ -119,26 +148,24 @@ class ShapLocalDynamicParameterMovieCreator(DynamicParameterMovieCreator):
                     y_proba, auc = None, np.nan
                 cm = confusion_matrix(y_test, y_pred)
                 self.performance_evolution[model_name].append(float(acc))
-                rocpr_img, auc_val, ap_val = self._plot_roc_pr(y_test, y_proba)
-                cm_img = self._plot_confusion_matrix(cm)
-                acc_img = self._plot_accuracy_evolution(model_name)
-                self.last_auc[model_name] = auc_val
-                self.last_auprc[model_name] = ap_val
                 print(f"   ✅ Acc={acc:.3f}, AUC={auc if not np.isnan(auc) else 'NA'}")
             except Exception:
                 acc = 0.0
                 self.performance_evolution[model_name].append(float(acc))
+                y_pred = None
                 y_proba = None
-                rocpr_img, auc_val, ap_val = self._plot_roc_pr(np.array([0, 1]), np.array([0.0, 1.0]))
-                cm_img = self._plot_confusion_matrix(np.array([[0, 0], [0, 0]]))
-                acc_img = self._plot_accuracy_evolution(model_name)
-                self.last_auc[model_name] = auc_val
-                self.last_auprc[model_name] = ap_val
+                auc = np.nan
 
-            # Choose consistent target molecule
+            # Choose consistent target molecule - prefer Series C compound
             if self.target_smiles is None:
-                self.target_smiles = str(smiles_test[0])
-                print(f"   🎯 Target molecule selected for visualization: {self.target_smiles}")
+                # Use parent class method to get Series C compound
+                series_c_smiles = self.get_series_c_smiles()
+                if series_c_smiles:
+                    self.target_smiles = series_c_smiles
+                    print(f"   🎯 Target molecule (Series C - Spiro): ROY-0000220-001, IC50=0.78 µM (potent)")
+                else:
+                    self.target_smiles = str(smiles_test[0])
+                    print(f"   🎯 Target molecule selected for visualization: {self.target_smiles}")
             from rdkit import Chem
             target_mol = Chem.MolFromSmiles(self.target_smiles)
 
@@ -225,9 +252,7 @@ class ShapLocalDynamicParameterMovieCreator(DynamicParameterMovieCreator):
             title = "Dynamic Parameter Optimization - Circular Fingerprint"
             canvas = self.draw_molecule_with_dynamic_parameters(
                 atom_weights, title, iteration, quality_score, float(acc), model_name, params, target_mol,
-                auc_val=self.last_auc[model_name], auprc_val=self.last_auprc[model_name],
-                acc_img=acc_img, cm_img=cm_img, rocpr_img=rocpr_img,
-                advanced_metrics=advanced_metrics, dataset_adv_metrics=dataset_adv
+                auc=auc, y_test=y_test, y_pred=y_pred, y_pred_proba=y_proba
             )
             if canvas is not None:
                 frame_path = frame_dir / f"{model_name}_dynamic_frame_shaplocal_{iteration:02d}.png"

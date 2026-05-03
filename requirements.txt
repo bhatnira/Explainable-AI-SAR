@@ -1,4 +1,4 @@
-# Core dependencies for Circular Fingerprint AutoML TPOT Explainability
+# Core dependencies for Circular Fingerprint AutoML TPOT Explainability + QSAR Analysis
 numpy==1.23.5
 pandas==2.0.*
 scikit-learn==1.1.*
@@ -17,6 +17,18 @@ shap>=0.45,<0.48
 # Chemical informatics
 deepchem==2.7.1
 rdkit-pypi==2022.9.5
+
+# QSAR Analysis specifics
+umap-learn==0.5.*
+hdbscan==0.8.*
+scipy>=1.9.0
+statsmodels>=0.13.0
+
+# Visualization for QSAR
+plotly>=5.0.0
+kaleido>=0.2.1
+networkx>=2.6
+python-Levenshtein>=0.20.0
 
 # Additional utilities
 seaborn==0.12.*

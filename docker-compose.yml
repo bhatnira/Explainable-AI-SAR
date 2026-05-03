@@ -12,6 +12,28 @@ services:
       - PYTHONUNBUFFERED=1
       - MPLBACKEND=Agg
     command: python models/train_tpot_simple.py
+
+  # Prepare QSAR dataset for GIF generation (GPU + Full CPU cores)
+  prepare-qsar-for-gif:
+    build: .
+    container_name: prepare-qsar-for-gif
+    volumes:
+      - ./data:/workspace/data
+      - ./Tzu-QSAR-only:/workspace/Tzu-QSAR-only
+      - ./scripts:/workspace/scripts
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+      - SLURM_CPUS_PER_TASK=24
+      - OMP_NUM_THREADS=24
+      - MKL_NUM_THREADS=24
+      - OPENBLAS_NUM_THREADS=24
+      - NUMEXPR_NUM_THREADS=24
+      - CUDA_VISIBLE_DEVICES=0
+    cpus: '24'
+    mem_limit: 48g
+    runtime: nvidia
+    command: python scripts/prepare_qsar_for_gif.py
     
   # Service for running interpretations
   interpret:
@@ -41,7 +63,7 @@ services:
       - MPLBACKEND=Agg
     command: python models/agentic_parameter_optimizer.py
     
-  # Service for generating GIFs (original LIME/mixed)
+  # Service for generating GIFs (original LIME/mixed) - GPU accelerated
   visualize:
     build: .
     container_name: circular-fingerprint-visualize
@@ -52,6 +74,11 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - MPLBACKEND=Agg
+      - OMP_NUM_THREADS=24
+      - CUDA_VISIBLE_DEVICES=0
+    cpus: '24'
+    mem_limit: 48g
+    runtime: nvidia
     command: python visualization/generate_gifs.py
     depends_on:
       - optimize
@@ -194,3 +221,63 @@ services:
       - MAX_MMP_PAIRS=200
       - MCS_TIMEOUT=2
     command: python analysis/sar/mmp_motif_analysis.py
+
+  # QSAR Analysis - Data Loading and IC50 Analysis
+  qsar-analysis:
+    build: .
+    container_name: qsar-analysis
+    volumes:
+      - ./Tzu-QSAR-only:/workspace/Tzu-QSAR-only
+      - ./Tzu-QSAR-only/data:/workspace/data:ro
+      - ./Tzu-QSAR-only/results:/workspace/results
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+      - PYTHONPATH=/workspace/Tzu-QSAR-only:/workspace
+    command: python scripts/analyze_qsar_ic50.py
+
+  # QSAR Model Training Service
+  qsar-train:
+    build: .
+    container_name: qsar-train
+    volumes:
+      - ./Tzu-QSAR-only:/workspace/Tzu-QSAR-only
+      - ./Tzu-QSAR-only/data:/workspace/data
+      - ./Tzu-QSAR-only/results:/workspace/results
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+      - PYTHONPATH=/workspace/Tzu-QSAR-only:/workspace
+    command: python Tzu-QSAR-only/scripts/run_qsar_pipeline.py
+    depends_on:
+      - qsar-analysis
+
+  # QSAR Descriptor Computation
+  qsar-descriptors:
+    build: .
+    container_name: qsar-descriptors
+    volumes:
+      - ./Tzu-QSAR-only:/workspace/Tzu-QSAR-only
+      - ./Tzu-QSAR-only/data:/workspace/data
+      - ./Tzu-QSAR-only/results:/workspace/results
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+      - PYTHONPATH=/workspace/Tzu-QSAR-only:/workspace
+    command: python -c "print('QSAR Descriptor computation ready')"
+
+  # QSAR Visualization Service
+  qsar-visualize:
+    build: .
+    container_name: qsar-visualize
+    volumes:
+      - ./Tzu-QSAR-only:/workspace/Tzu-QSAR-only
+      - ./Tzu-QSAR-only/data:/workspace/data:ro
+      - ./Tzu-QSAR-only/results:/workspace/results
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MPLBACKEND=Agg
+      - PYTHONPATH=/workspace/Tzu-QSAR-only:/workspace
+    command: python -c "print('QSAR Visualization ready')"
+    depends_on:
+      - qsar-analysis
